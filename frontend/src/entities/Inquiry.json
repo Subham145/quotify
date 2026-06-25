@@ -1,0 +1,12 @@
+{
+  "name": "Inquiry",
+  "fields": [
+    "customer_name",
+    "company",
+    "mobile",
+    "source",
+    "status",
+    "assigned_to",
+    "follow_up_date"
+  ]
+}

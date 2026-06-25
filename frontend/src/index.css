@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 216 33% 98%;
+  --foreground: 222 29% 16%;
+  --card: 0 0% 100%;
+  --muted: 218 20% 94%;
+  --border: 220 24% 88%;
+}
+
+body {
+  @apply min-h-screen bg-slate-50 text-slate-900 antialiased;
+}
+
+* {
+  @apply border-slate-200;
+}
+
+.card {
+  @apply rounded-xl border bg-white p-4 shadow-sm;
+}

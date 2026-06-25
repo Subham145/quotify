@@ -1,0 +1,4 @@
+{
+  "name": "Quotation",
+  "fields": ["quotation_number", "items", "total_amount", "status", "assigned_to"]
+}

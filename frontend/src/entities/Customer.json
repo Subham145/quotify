@@ -1,0 +1,4 @@
+{
+  "name": "Customer",
+  "fields": ["customer_name", "company_name", "gst_number", "customer_type"]
+}

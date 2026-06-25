@@ -1,0 +1,4 @@
+{
+  "name": "Product",
+  "fields": ["product_name", "hsn_code", "group_id", "price", "gst_rate", "unit"]
+}

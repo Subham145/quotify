@@ -1,0 +1,4 @@
+{
+  "name": "CRMLead",
+  "fields": ["stage", "estimated_value", "lead_source", "next_follow_up"]
+}
