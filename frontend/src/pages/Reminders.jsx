@@ -4,9 +4,15 @@ import { useSearchParams } from 'react-router-dom';
 import DataTable from '../components/shared/DataTable';
 import PageHeader from '../components/shared/PageHeader';
 import { api } from '../api/http';
+import { useAuth } from '../lib/AuthContext';
+import { canAccess } from '../lib/permissions';
 
 export default function Reminders() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const canCreate = canAccess(user, 'reminders', 'create');
+  const canEdit = canAccess(user, 'reminders', 'edit');
+  const canDelete = canAccess(user, 'reminders', 'delete');
   const [searchParams] = useSearchParams();
   const { data: reminders = [] } = useQuery({ queryKey: ['reminders'], queryFn: () => api('/reminders') });
   const openReminderId = Number(searchParams.get('open') || 0);
@@ -30,13 +36,21 @@ export default function Reminders() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api('/reminders/' + id, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reminders'] });
+      qc.invalidateQueries({ queryKey: ['pending-reminders-count'] });
+    },
+  });
+
   const columns = useMemo(() => [
     { key: 'title', label: 'Title' },
     { key: 'reminder_type', label: 'Type' },
     { key: 'reminder_date', label: 'Date' },
     { key: 'status', label: 'Status' },
-    { key: 'actions', label: 'Actions' },
-  ], []);
+    ...(canEdit || canDelete ? [{ key: 'actions', label: 'Actions' }] : []),
+  ], [canEdit, canDelete]);
 
   const sortedReminders = [...reminders].sort((a, b) => {
     if (Number(a.id) === openReminderId) return -1;
@@ -49,8 +63,23 @@ export default function Reminders() {
     title: Number(r.id) === openReminderId ? `Opened: ${r.title}` : r.title,
     actions: (
       <div className="flex gap-1">
-        <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => updateMutation.mutate({ id: r.id, status: 'completed' })}>Complete</button>
-        <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => updateMutation.mutate({ id: r.id, status: 'cancelled' })}>Cancel</button>
+        {canEdit ? (
+          <>
+            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => updateMutation.mutate({ id: r.id, status: 'completed' })}>Complete</button>
+            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => updateMutation.mutate({ id: r.id, status: 'cancelled' })}>Cancel</button>
+          </>
+        ) : null}
+        {canDelete ? (
+          <button
+            type="button"
+            className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+            onClick={() => {
+              if (window.confirm(`Delete reminder "${r.title}"?`)) deleteMutation.mutate(r.id);
+            }}
+          >
+            Delete
+          </button>
+        ) : null}
       </div>
     ),
   }));
@@ -68,6 +97,7 @@ export default function Reminders() {
         </div>
       ) : null}
 
+      {canCreate ? (
       <form className="card grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }}>
         <input className="rounded border p-2" placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
         <select className="rounded border p-2" value={form.reminder_type} onChange={(e) => setForm({ ...form, reminder_type: e.target.value })}>
@@ -81,6 +111,7 @@ export default function Reminders() {
         <input className="rounded border p-2" type="datetime-local" value={form.reminder_date} onChange={(e) => setForm({ ...form, reminder_date: e.target.value })} required />
         <button type="submit" className="rounded bg-brand-600 px-3 py-2 text-sm text-white">Add Reminder</button>
       </form>
+      ) : null}
 
       <DataTable columns={columns} rows={rows} />
     </div>

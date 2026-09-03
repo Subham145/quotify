@@ -2,16 +2,20 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './lib/AuthContext';
 
+import Attendance from './pages/Attendance';
 import CRM from './pages/CRM';
 import Customers from './pages/Customers';
 import Dashboard from './pages/Dashboard';
+import FollowUps from './pages/FollowUps';
 import InquiriesQuotations from './pages/InquiriesQuotations';
 import InquirySources from './pages/InquirySources';
 import Login from './pages/Login';
+import ProductCategories from './pages/ProductCategories';
 import ProductGroups from './pages/ProductGroups';
 import Products from './pages/Products';
 import Reminders from './pages/Reminders';
 import Reports from './pages/Reports';
+import Roles from './pages/Roles';
 import Settings from './pages/Settings';
 import Users from './pages/Users';
 
@@ -73,13 +77,18 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="inquiries" element={<InquiriesQuotations />} />
+        <Route path="quotations" element={<InquiriesQuotations />} />
         <Route path="inquiry-sources" element={<InquirySources />} />
         <Route path="crm" element={<CRM />} />
+        <Route path="follow-ups" element={<FollowUps />} />
         <Route path="customers" element={<Customers />} />
         <Route path="products" element={<Products />} />
         <Route path="product-groups" element={<ProductGroups />} />
+        <Route path="product-categories" element={<ProductCategories />} />
+        <Route path="attendance" element={<Attendance />} />
         <Route path="reminders" element={<Reminders />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="roles" element={<Roles />} />
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />
       </Route>

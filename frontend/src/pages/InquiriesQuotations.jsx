@@ -4,16 +4,35 @@ import DataTable from '../components/shared/DataTable';
 import PageHeader from '../components/shared/PageHeader';
 import { api } from '../api/http';
 import StatusBadge from '../components/shared/StatusBadge';
+import { useAuth } from '../lib/AuthContext';
+import { canAccess, isManager } from '../lib/permissions';
 
 export default function InquiriesQuotations() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const canCreateInquiry = canAccess(user, 'inquiries', 'create');
+  const canEditInquiry = canAccess(user, 'inquiries', 'edit');
+  const canDeleteInquiry = canAccess(user, 'inquiries', 'delete');
+  const canCreateQuotation = canAccess(user, 'quotations', 'create');
+  const canEditQuotation = canAccess(user, 'quotations', 'edit');
+  const canDeleteQuotation = canAccess(user, 'quotations', 'delete');
+  const canAssignFollowUp = canAccess(user, 'follow_ups', 'create');
+
   const { data: inquiries = [] } = useQuery({ queryKey: ['inquiries'], queryFn: () => api('/inquiries') });
   const [selectedInquiry,setSelectedInquiry]=useState('');
-  const inquiryData =inquiries.find(i=>String(i.id)===selectedInquiry); 
+  const inquiryData =inquiries.find(i=>String(i.id)===selectedInquiry);
   const { data: productsRaw } = useQuery({ queryKey: ['products'], queryFn: () => api('/products') });
   const products = Array.isArray(productsRaw) ? productsRaw : Array.isArray(productsRaw?.data)  ? productsRaw.data : [];
   const { data: quotations = [] } = useQuery({ queryKey: ['quotations'], queryFn: () => api('/quotations') });
   const { data: sources = [] } = useQuery({ queryKey: ['inquiry-sources'], queryFn: () => api('/inquiry-sources') });
+  const { data: assignees = [] } = useQuery({
+    queryKey: ['users-assignable'],
+    queryFn: () => api('/users/assignable'),
+    enabled: canAssignFollowUp,
+  });
+
+  const [followUpFor, setFollowUpFor] = useState(null);
+  const [followUpForm, setFollowUpForm] = useState({ assigned_to: '', title: '', notes: '', due_date: '' });
 
   const [activeTab, setActiveTab] = useState('inquiries');
   const [actionMessage, setActionMessage] = useState('');
@@ -22,7 +41,7 @@ export default function InquiriesQuotations() {
   const [editingInquiry,setEditingInquiry]=useState(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState(null);
-  const [selectedTemplate, setSelectedTemplate] = useState('pump');
+  const [selectedTemplate, setSelectedTemplate] = useState('baerlocher');
 
   const [editInquiryForm,setEditInquiryForm]=useState({customer_name:'',company:'',mobile:'',product_interested:'',follow_up_date:'',status:'new'});
   const [inquiryForm, setInquiryForm] = useState({customer_name: '',company: '',mobile: '',source: 'WhatsApp',product_interested:'',status: 'new',follow_up_date: '',});
@@ -232,6 +251,26 @@ setActionMessage(
     },
   });
 
+  const followUpMutation = useMutation({
+    mutationFn: (payload) => api('/follow-ups', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: (res) => {
+      if (res?.message) {
+        setActionError(res.message);
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ['follow-ups'] });
+      qc.invalidateQueries({ queryKey: ['follow-ups-pending-count'] });
+      setFollowUpFor(null);
+      setFollowUpForm({ assigned_to: '', title: '', notes: '', due_date: '' });
+      setActionMessage('Follow-up assigned successfully');
+      setActionError('');
+    },
+    onError: (err) => {
+      setActionError(err.message || 'Failed to assign follow-up');
+      setActionMessage('');
+    },
+  });
+
   const inquiryColumns = useMemo(
     () => [
       { key: 'inquiry_number', label: 'Inquiry No' },
@@ -271,183 +310,125 @@ setActionMessage(
   const inquiryRows = inquiries.map((i) => ({
     ...i,
     status: <StatusBadge value={i.status} />,
-    actions:
-
-<div className="flex gap-2 flex-wrap">
-
-<button
-
-type="button"
-
-className="rounded border px-2 py-1 text-xs"
-
-onClick={()=>{
-
-setEditingInquiry(i);
-
-setEditInquiryForm({
-
-customer_name:i.customer_name||'',
-
-company:i.company||'',
-
-mobile:i.mobile||'',
-
-product_interested:i.product_interested||'',
-
-follow_up_date:i.follow_up_date||'',
-
-status:i.status||'new'
-
-});
-
-}}
-
->
-
-Edit
-
-</button>
-
-<button
-
-type="button"
-
-className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700"
-
-onClick={async()=>{
-
-const ok=
-
-window.confirm(
-
-'Delete inquiry?'
-
-);
-
-if(!ok)return;
-
-await api(
-
-`/inquiries/${i.id}`,
-
-{
-
-method:'DELETE'
-
-}
-
-);
-
-qc.invalidateQueries({
-
-queryKey:['inquiries']
-
-});
-
-}}
-
->
-
-Delete
-
-</button>
-
-{
-
-i.status !== 'converted'
-
-?
-
-(
-
-<button
-
-type="button"
-
-onClick={() =>
-
-convertMutation.mutate(
-
-i.id
-
-)
-
-}
-
-className="rounded-lg border px-2 py-1 text-xs hover:bg-slate-50"
-
->
-
-Convert to Quotation
-
-</button>
-
-)
-
-:
-
-(
-
-<span className="text-xs text-emerald-700">
-
-Converted
-
-</span>
-
-)
-
-}
-
-</div>,
+    actions: (
+      <div className="flex gap-2 flex-wrap">
+        {canEditInquiry ? (
+          <button
+            type="button"
+            className="rounded border px-2 py-1 text-xs"
+            onClick={() => {
+              setEditingInquiry(i);
+              setEditInquiryForm({
+                customer_name: i.customer_name || '',
+                company: i.company || '',
+                mobile: i.mobile || '',
+                product_interested: i.product_interested || '',
+                follow_up_date: i.follow_up_date || '',
+                status: i.status || 'new',
+              });
+            }}
+          >
+            Edit
+          </button>
+        ) : null}
+
+        {canAssignFollowUp ? (
+          <button
+            type="button"
+            className="rounded border border-brand-300 px-2 py-1 text-xs text-brand-700 hover:bg-brand-50"
+            onClick={() => {
+              setFollowUpFor(i);
+              setFollowUpForm({
+                assigned_to: i.assigned_to ? String(i.assigned_to) : '',
+                title: `Follow up: ${i.customer_name || i.inquiry_number}`,
+                notes: '',
+                due_date: '',
+              });
+            }}
+          >
+            Assign Follow-up
+          </button>
+        ) : null}
+
+        {canDeleteInquiry ? (
+          <button
+            type="button"
+            className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700"
+            onClick={async () => {
+              if (!window.confirm('Delete inquiry?')) return;
+              await api(`/inquiries/${i.id}`, { method: 'DELETE' });
+              qc.invalidateQueries({ queryKey: ['inquiries'] });
+            }}
+          >
+            Delete
+          </button>
+        ) : null}
+
+        {canEditInquiry && i.status !== 'converted' ? (
+          <button
+            type="button"
+            onClick={() => convertMutation.mutate(i.id)}
+            className="rounded-lg border px-2 py-1 text-xs hover:bg-slate-50"
+          >
+            Convert to Quotation
+          </button>
+        ) : i.status === 'converted' ? (
+          <span className="text-xs text-emerald-700">Converted</span>
+        ) : null}
+      </div>
+    ),
   }));
 
   const quotationRows = quotations.map((q) => ({
     ...q,
     actions: (
       <div className="flex flex-wrap gap-1">
+        {canCreateQuotation ? (
+          <button
+            type="button"
+            className="rounded border px-2 py-1 text-xs disabled:opacity-60"
+            disabled={busyRowId === q.id}
+            onClick={() => runRowAction(q.id, () => duplicateMutation.mutateAsync(q.id))}
+          >
+            Duplicate
+          </button>
+        ) : null}
+        {canEditQuotation ? (
+          <button
+            type="button"
+            className="rounded border px-2 py-1 text-xs disabled:opacity-60"
+            disabled={busyRowId === q.id}
+            onClick={() => runRowAction(q.id, () => actionMutation.mutateAsync({ id: q.id, action: 'convert-to-invoice' }))}
+          >
+            Invoice
+          </button>
+        ) : null}
         <button
           type="button"
-          className="rounded border px-2 py-1 text-xs disabled:opacity-60"
-          disabled={busyRowId === q.id}
-          onClick={() => runRowAction(q.id, () => duplicateMutation.mutateAsync(q.id))}
+          className="rounded border border-indigo-500 px-2 py-1 text-xs text-indigo-600"
+          onClick={() => {
+            setSelectedQuotationId(q.id);
+            setSelectedTemplate('baerlocher');
+            setShowTemplateModal(true);
+          }}
         >
-          Duplicate
+          Download PDF
         </button>
-        <button
-          type="button"
-          className="rounded border px-2 py-1 text-xs disabled:opacity-60"
-          disabled={busyRowId === q.id}
-          onClick={() => runRowAction(q.id, () => actionMutation.mutateAsync({ id: q.id, action: 'convert-to-invoice' }))}
-        >
-          Invoice
-        </button>
-<button
-  type="button"
-  className="rounded border border-indigo-500 px-2 py-1 text-xs text-indigo-600"
-  onClick={() => {
-    setSelectedQuotationId(q.id);
-    setSelectedTemplate('pump');
-    setShowTemplateModal(true);
-  }}
->
-  Download PDF
-</button>
 
-
-
-        <button
-          type="button"
-          className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 disabled:opacity-60"
-          disabled={busyRowId === q.id}
-          onClick={() => runRowAction(q.id, () => {
-            const ok = window.confirm(`Delete quotation ${q.quotation_number}?`);
-            if (!ok) return Promise.resolve();
-            return deleteQuotationMutation.mutateAsync(q.id);
-          })}
-        >
-          Delete
-        </button>
+        {canDeleteQuotation ? (
+          <button
+            type="button"
+            className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 disabled:opacity-60"
+            disabled={busyRowId === q.id}
+            onClick={() => runRowAction(q.id, () => {
+              const ok = window.confirm(`Delete quotation ${q.quotation_number}?`);
+              if (!ok) return Promise.resolve();
+              return deleteQuotationMutation.mutateAsync(q.id);
+            })}
+          >
+            Delete
+          </button>
+        ) : null}
       </div>
     ),
   }));
@@ -485,6 +466,7 @@ Converted
       {/* INQUIRIES TAB */}
       {activeTab === 'inquiries' && (
         <div className="space-y-4">
+          {canCreateInquiry ? (
           <form onSubmit={(e) => { e.preventDefault(); createInquiryMutation.mutate(inquiryForm); }} className="card space-y-3">
             <div className="grid gap-3 md:grid-cols-3">
               <div className="space-y-1">
@@ -634,6 +616,7 @@ value={p.product_name}
 
             <button type="submit" className="rounded-lg bg-brand-600 px-3 py-2 text-sm text-white">Add Inquiry</button>
           </form>
+          ) : null}
           <DataTable columns={inquiryColumns} rows={inquiryRows} />
         </div>
       )}
@@ -644,6 +627,7 @@ value={p.product_name}
 
 <div className="space-y-4">
 
+{canCreateQuotation ? (
 <form
 
 onSubmit={(e)=>{
@@ -1286,6 +1270,7 @@ Create Quotation
 </button>
 
 </form>
+) : null}
 
           <DataTable
             columns={quotationColumns}
@@ -1430,6 +1415,87 @@ Cancel
 
 }
 
+{followUpFor && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+      <h3 className="mb-1 text-lg font-semibold">Assign Follow-up</h3>
+      <p className="mb-4 text-sm text-slate-500">
+        {followUpFor.inquiry_number} · {followUpFor.customer_name}
+      </p>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!followUpForm.assigned_to) {
+            setActionError('Please choose an employee to assign.');
+            return;
+          }
+          followUpMutation.mutate({
+            inquiry_id: followUpFor.id,
+            assigned_to: Number(followUpForm.assigned_to),
+            title: followUpForm.title,
+            notes: followUpForm.notes,
+            due_date: followUpForm.due_date || null,
+          });
+        }}
+      >
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Assign To *</label>
+          <select
+            className="w-full rounded border p-2"
+            value={followUpForm.assigned_to}
+            onChange={(e) => setFollowUpForm({ ...followUpForm, assigned_to: e.target.value })}
+            required
+          >
+            <option value="">Select employee</option>
+            {(Array.isArray(assignees) ? assignees : []).map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Title</label>
+          <input
+            className="w-full rounded border p-2"
+            value={followUpForm.title}
+            onChange={(e) => setFollowUpForm({ ...followUpForm, title: e.target.value })}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Due Date</label>
+          <input
+            type="datetime-local"
+            className="w-full rounded border p-2"
+            value={followUpForm.due_date}
+            onChange={(e) => setFollowUpForm({ ...followUpForm, due_date: e.target.value })}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Notes</label>
+          <textarea
+            rows={2}
+            className="w-full rounded border p-2"
+            value={followUpForm.notes}
+            onChange={(e) => setFollowUpForm({ ...followUpForm, notes: e.target.value })}
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-4 py-2 text-sm" onClick={() => setFollowUpFor(null)}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="rounded bg-brand-600 px-4 py-2 text-sm text-white"
+            disabled={followUpMutation.isPending}
+          >
+            Assign
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
+
 {showTemplateModal && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
     <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
@@ -1443,10 +1509,9 @@ Cancel
         value={selectedTemplate}
         onChange={(e) => setSelectedTemplate(e.target.value)}
       >
-        <option value="pump">Pump Template</option>
-        <option value="motor">Motor Template</option>
-        <option value="industrial">Industrial Template</option>
-        <option value="service">Service Template</option>
+        <option value="baerlocher">Baerlocher (Techno-Commercial Offer)</option>
+        <option value="choithram">Choithram School (Submersible Pump)</option>
+        <option value="greaves">Greaves (DG Set / CRM 1-Page)</option>
       </select>
 
       <div className="flex justify-end gap-2">

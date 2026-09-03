@@ -22,17 +22,21 @@ export const quotationStatus = [
 ];
 
 export const navItems = [
-  { label: 'Dashboard', path: '/' },
-  { label: 'Inquiries & Quotations', path: '/inquiries' },
-  { label: 'Inquiry Sources', path: '/inquiry-sources' },
-  { label: 'CRM', path: '/crm' },
-  { label: 'Customers', path: '/customers' },
-  { label: 'Products', path: '/products' },
-  { label: 'Product Groups', path: '/product-groups' },
-  { label: 'Reminders', path: '/reminders' },
-  { label: 'Reports', path: '/reports' },
-  { label: 'Users', path: '/users' },
-  { label: 'Settings', path: '/settings' },
+  { label: 'Dashboard', path: '/', module: 'dashboard' },
+  { label: 'Inquiries & Quotations', path: '/inquiries', module: 'inquiries' },
+  { label: 'Inquiry Sources', path: '/inquiry-sources', module: 'inquiries' },
+  { label: 'CRM', path: '/crm', module: 'crm' },
+  { label: 'Follow-ups', path: '/follow-ups', module: 'follow_ups' },
+  { label: 'Customers', path: '/customers', module: 'customers' },
+  { label: 'Products', path: '/products', module: 'products' },
+  { label: 'Product Groups', path: '/product-groups', module: 'product_groups' },
+  { label: 'Product Categories', path: '/product-categories', module: 'products' },
+  { label: 'Attendance', path: '/attendance', module: 'attendance' },
+  { label: 'Reminders', path: '/reminders', module: 'reminders' },
+  { label: 'Reports', path: '/reports', module: 'reports' },
+  { label: 'Roles & Permissions', path: '/roles', superAdminOnly: true },
+  { label: 'Users', path: '/users', superAdminOnly: true },
+  { label: 'Settings', path: '/settings', module: 'settings' },
 ];
 
 export const sampleRows = {

@@ -44,7 +44,9 @@ export default function InquirySources() {
       <button
         type="button"
         className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
-        onClick={() => deleteMutation.mutate(s.id)}
+        onClick={() => {
+          if (window.confirm(`Delete source "${s.source_name}"?`)) deleteMutation.mutate(s.id);
+        }}
       >
         Delete
       </button>

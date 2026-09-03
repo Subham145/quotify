@@ -19,8 +19,15 @@ export default function Dashboard() {
   const { data: quotations = [] } = useQuery({ queryKey: ['quotations'], queryFn: () => api('/quotations') });
   const { data: customers = [] } = useQuery({ queryKey: ['customers'], queryFn: () => api('/customers') });
   const { data: reminders = [] } = useQuery({ queryKey: ['reminders'], queryFn: () => api('/reminders') });
+  const { data: followUps = [] } = useQuery({ queryKey: ['follow-ups'], queryFn: () => api('/follow-ups') });
 
-  const pendingTasks = reminders.filter((r) => r.status === 'pending' || r.status === 'overdue').length;
+  const followUpList = Array.isArray(followUps) ? followUps : [];
+  const pendingFollowUps = followUpList.filter((f) => f.status === 'pending').length;
+  const overdueFollowUps = followUpList.filter(
+    (f) => f.status === 'pending' && f.due_date && new Date(f.due_date).getTime() < Date.now()
+  ).length;
+  const pendingReminders = reminders.filter((r) => r.status === 'pending' || r.status === 'overdue').length;
+  const pendingTasks = pendingReminders + pendingFollowUps;
   const converted = Number(inquiryStats?.converted || 0);
   const totalInquiries = Number(inquiryStats?.total || 0);
   const conversionRate = totalInquiries ? `${((converted / totalInquiries) * 100).toFixed(1)}%` : '0%';
@@ -101,7 +108,9 @@ export default function Dashboard() {
         </div>
         <div className="card border-rose-200 bg-rose-50">
           <h3 className="mb-2 font-semibold text-rose-800">Overdue Alerts</h3>
-          <p className="text-sm text-rose-700">{reminders.filter((r) => r.status === 'overdue').length} overdue tasks.</p>
+          <p className="text-sm text-rose-700">{reminders.filter((r) => r.status === 'overdue').length} overdue reminders.</p>
+          <p className="text-sm text-rose-700">{overdueFollowUps} overdue follow-ups.</p>
+          <p className="mt-1 text-sm text-slate-600">{pendingFollowUps} follow-ups pending in total.</p>
         </div>
       </div>
     </div>

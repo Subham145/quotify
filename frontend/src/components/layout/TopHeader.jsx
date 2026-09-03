@@ -1,4 +1,4 @@
-import { Bell, FileText, LogOut, Search, User } from 'lucide-react';
+import { Bell, CalendarClock, FileText, LogOut, Search, User } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
@@ -35,6 +35,11 @@ export default function TopHeader() {
   const { data } = useQuery({
     queryKey: ['pending-reminders-count'],
     queryFn: () => api('/reminders/pending-count'),
+  });
+
+  const { data: followUpCount } = useQuery({
+    queryKey: ['follow-ups-pending-count'],
+    queryFn: () => api('/follow-ups/pending-count'),
   });
 
   const filteredQuotations = useMemo(() => {
@@ -150,6 +155,18 @@ export default function TopHeader() {
         ) : null}
       </div>
       <div className="flex items-center gap-3">
+        <Link
+          to="/follow-ups"
+          className="relative rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-2 text-slate-700 shadow-sm hover:border-brand-200 hover:from-brand-50/60 hover:to-white"
+          title="Pending follow-ups"
+        >
+          <CalendarClock size={18} />
+          {followUpCount?.count ? (
+            <span className="absolute -right-1 -top-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white">
+              {followUpCount.count}
+            </span>
+          ) : null}
+        </Link>
         <div ref={notifRef} className="relative">
           <button
             className="relative rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-2 text-slate-700 shadow-sm hover:border-brand-200 hover:from-brand-50/60 hover:to-white"

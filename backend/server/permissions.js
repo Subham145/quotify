@@ -6,6 +6,8 @@ export const PERMISSION_MODULES = [
   'customers',
   'products',
   'product_groups',
+  'follow_ups',
+  'attendance',
   'reminders',
   'reports',
   'users',
@@ -27,14 +29,18 @@ export function getDefaultPermissions(role = 'User') {
   });
 
   if (role === 'User') {
+    // Normal users are view-only on core data; they can act on follow-ups
+    // assigned to them and record their own attendance.
     out.dashboard.view = true;
-    out.inquiries = { view: true, create: true, edit: true, delete: false, manage: false };
-    out.crm = { view: true, create: true, edit: true, delete: false, manage: false };
-    out.quotations = { view: true, create: true, edit: true, delete: false, manage: false };
-    out.customers = { view: true, create: true, edit: true, delete: false, manage: false };
+    out.inquiries = { view: true, create: false, edit: false, delete: false, manage: false };
+    out.crm = { view: true, create: false, edit: false, delete: false, manage: false };
+    out.quotations = { view: true, create: false, edit: false, delete: false, manage: false };
+    out.customers = { view: true, create: false, edit: false, delete: false, manage: false };
     out.products = { view: true, create: false, edit: false, delete: false, manage: false };
     out.product_groups = { view: true, create: false, edit: false, delete: false, manage: false };
-    out.reminders = { view: true, create: true, edit: true, delete: false, manage: false };
+    out.follow_ups = { view: true, create: false, edit: true, delete: false, manage: false };
+    out.attendance = { view: true, create: true, edit: false, delete: false, manage: false };
+    out.reminders = { view: true, create: false, edit: false, delete: false, manage: false };
     out.reports = { view: true, create: false, edit: false, delete: false, manage: false };
     out.users = { view: false, create: false, edit: false, delete: false, manage: false };
     out.settings = { view: false, create: false, edit: false, delete: false, manage: false };
@@ -81,6 +87,7 @@ export function sanitizeUser(userRow) {
     name: userRow.name,
     email: userRow.email,
     role: userRow.role,
+    role_id: userRow.role_id ?? null,
     is_active: userRow.is_active,
     created_at: userRow.created_at,
     permissions: parsePermissions(userRow.permissions, userRow.role),

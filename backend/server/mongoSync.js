@@ -3,13 +3,17 @@ import { connectMongo, getCollection, mongoState } from './mongo.js';
 
 const TABLES = [
   'users',
+  'roles',
   'inquiry_sources',
+  'product_categories',
   'customers',
   'product_groups',
   'products',
   'inquiries',
   'crm_leads',
   'crm_activities',
+  'follow_ups',
+  'attendance',
   'quotations',
   'quotation_items',
   'reminders',

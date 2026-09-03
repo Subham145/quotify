@@ -209,12 +209,67 @@ export function initDb() {
       counter_key TEXT PRIMARY KEY,
       counter_value INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      base_role TEXT NOT NULL CHECK(base_role IN ('SuperAdmin','Admin','User')),
+      permissions TEXT,
+      is_system INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS product_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS follow_ups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      inquiry_id INTEGER,
+      lead_id INTEGER,
+      assigned_to INTEGER,
+      created_by INTEGER,
+      title TEXT,
+      notes TEXT,
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','done','cancelled')),
+      outcome TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(inquiry_id) REFERENCES inquiries(id),
+      FOREIGN KEY(lead_id) REFERENCES crm_leads(id),
+      FOREIGN KEY(assigned_to) REFERENCES users(id),
+      FOREIGN KEY(created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS attendance (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'present' CHECK(status IN ('present','absent','half_day','leave')),
+      check_in TEXT,
+      check_out TEXT,
+      notes TEXT,
+      marked_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, date),
+      FOREIGN KEY(user_id) REFERENCES users(id),
+      FOREIGN KEY(marked_by) REFERENCES users(id)
+    );
   `);
 
   const userColumns = db.prepare('PRAGMA table_info(users)').all();
   const hasPermissionsCol = userColumns.some((c) => c.name === 'permissions');
   if (!hasPermissionsCol) {
     db.exec('ALTER TABLE users ADD COLUMN permissions TEXT');
+  }
+  const hasRoleIdCol = userColumns.some((c) => c.name === 'role_id');
+  if (!hasRoleIdCol) {
+    db.exec('ALTER TABLE users ADD COLUMN role_id INTEGER');
   }
 
   const usersSqlRow = db
@@ -244,6 +299,24 @@ export function initDb() {
       PRAGMA foreign_keys = ON;
     `);
   }
+
+  // Seed the built-in system roles (permission sets mirror getDefaultPermissions).
+  const systemRoles = ['SuperAdmin', 'Admin', 'User'];
+  const insertRole = db.prepare(
+    `INSERT OR IGNORE INTO roles (name, description, base_role, permissions, is_system)
+     VALUES (?, ?, ?, ?, 1)`
+  );
+  systemRoles.forEach((r) => {
+    insertRole.run(
+      r,
+      `Built-in ${r} role`,
+      r,
+      JSON.stringify(getDefaultPermissions(r))
+    );
+  });
+  // Keep the built-in roles' permission sets current with code changes.
+  const refreshRole = db.prepare('UPDATE roles SET permissions = ? WHERE name = ? AND is_system = 1');
+  systemRoles.forEach((r) => refreshRole.run(JSON.stringify(getDefaultPermissions(r)), r));
 
   const superAdminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('superadmin@quotify.local');
   if (!superAdminExists) {
@@ -275,6 +348,14 @@ export function initDb() {
     setPermissions.run(JSON.stringify(getDefaultPermissions(u.role || 'User')), u.id);
   });
 
+  // Link every user to a role row. Legacy users only carry the text `role`; map it
+  // to the matching system role so permission resolution has something to read.
+  db.prepare(
+    `UPDATE users
+     SET role_id = (SELECT id FROM roles WHERE roles.name = users.role)
+     WHERE role_id IS NULL`
+  ).run();
+
   const settings = db.prepare('SELECT id FROM company_settings WHERE id = 1').get();
   if (!settings) {
     db.prepare(
@@ -284,9 +365,24 @@ export function initDb() {
     ).run('Quotify Pvt Ltd', '', '', 'admin@quotify.local', '');
   }
 
-  const defaultSources = ['WhatsApp', 'Facebook', 'Exhibition', 'Referral', 'Email'];
+  const defaultSources = [
+    'Website',
+    'WhatsApp',
+    'Phone Call',
+    'Reference',
+    'Instagram',
+    'Facebook',
+    'Exhibition',
+    'Referral',
+    'Email',
+    'Other',
+  ];
   const insertSource = db.prepare('INSERT OR IGNORE INTO inquiry_sources (source_name, is_active) VALUES (?, 1)');
   defaultSources.forEach((source) => insertSource.run(source));
+
+  const defaultCategories = ['Digiset', 'Kirloskar – Dewas', 'Kirloskar – Wadi'];
+  const insertCategory = db.prepare('INSERT OR IGNORE INTO product_categories (name, is_active) VALUES (?, 1)');
+  defaultCategories.forEach((name) => insertCategory.run(name));
 }
 
 export function nextCounter(counterKey) {

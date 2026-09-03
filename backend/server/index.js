@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import db, { initDb, nextDocNo } from './db.js';
-import { login, requireAdmin, requireAuth, requirePermission, requireResource, requireSuperAdmin, signToken } from './auth.js';
+import { buildSessionUser, login, requireAdmin, requireAuth, requirePermission, requireResource, requireSuperAdmin, signToken } from './auth.js';
 import { getDefaultPermissions, normalizePermissions, sanitizeUser } from './permissions.js';
 import { connectMongo, mongoState } from './mongo.js';
 import { syncSqliteToMongo } from './mongoSync.js';
@@ -15,6 +15,9 @@ import { pumpTemplate } from './templates/pumpTemplate.js';
 import { motorTemplate } from './templates/motorTemplate.js';
 import { industrialTemplate } from './templates/industrialTemplate.js';
 import { serviceTemplate } from './templates/serviceTemplate.js';
+import { baerlocherTemplate } from './templates/baerlocherTemplate.js';
+import { choithramTemplate } from './templates/choithramTemplate.js';
+import { greavesTemplate } from './templates/greavesTemplate.js';
 
 initDb();
 
@@ -40,7 +43,14 @@ const PORT = Number(process.env.API_PORT || 4000);
 app.use(cors());
 app.use(express.json());
 
-app.use('/api/users', requireAuth, requireSuperAdmin);
+app.use('/api/users', requireAuth, (req, res, next) => {
+  if (req.path === '/assignable') return next();
+  return requireSuperAdmin(req, res, next);
+});
+app.use('/api/roles', requireAuth, requireSuperAdmin);
+app.use('/api/follow-ups', requireAuth, requireResource('follow_ups'));
+app.use('/api/attendance', requireAuth, requireResource('attendance'));
+app.use('/api/product-categories', requireAuth, requireResource('products'));
 app.use('/api/inquiry-sources', requireAuth, requireResource('inquiries'));
 app.use('/api/inquiries', requireAuth, requireResource('inquiries'));
 app.use('/api/crm', requireAuth, requireResource('crm'));
@@ -60,6 +70,14 @@ function list(table, orderBy = 'id DESC') {
 
 function getById(table, id) {
   return db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
+}
+
+function safeJson(raw, fallback = {}) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 app.get('/api/health', (_req, res) => {
@@ -94,29 +112,54 @@ app.post('/api/auth/login', (req, res) => {
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found' });
-  return res.json(sanitizeUser(user));
+  return res.json(buildSessionUser(user));
+});
+
+function roleRow(roleId) {
+  if (!roleId) return null;
+  return db.prepare('SELECT * FROM roles WHERE id = ?').get(Number(roleId));
+}
+
+// Lightweight roster for assignee pickers (any authenticated user).
+app.get('/api/users/assignable', (_req, res) => {
+  res.json(db.prepare('SELECT id, name, email FROM users WHERE is_active = 1 ORDER BY name ASC').all());
 });
 
 app.get('/api/users', (_req, res) => {
-  const users = db.prepare('SELECT * FROM users ORDER BY id DESC').all().map(sanitizeUser);
+  const users = db
+    .prepare(
+      `SELECT u.*, r.name AS r_name, r.base_role AS r_base
+       FROM users u LEFT JOIN roles r ON r.id = u.role_id
+       ORDER BY u.id DESC`
+    )
+    .all()
+    .map((u) => ({
+      ...sanitizeUser(u),
+      role_name: u.r_name || u.role,
+      base_role: u.r_base || u.role,
+    }));
   res.json(users);
 });
 
 app.post('/api/users/invite', (req, res) => {
-  const { name, email, role = 'User', password } = req.body || {};
+  const { name, email, password } = req.body || {};
   if (!name || !email) return res.status(400).json({ message: 'Name and email required' });
   if (!password) return res.status(400).json({ message: 'Password is required' });
-  
-  // Prevent creation of SuperAdmin users
-  const allowedRole = ['Admin', 'User'].includes(role) ? role : 'User';
+
+  let role = roleRow(req.body?.role_id);
+  if (!role) role = db.prepare("SELECT * FROM roles WHERE name = 'User' AND is_system = 1").get();
+  if (role.base_role === 'SuperAdmin') {
+    return res.status(400).json({ message: 'Cannot assign a SuperAdmin role via invite' });
+  }
 
   const hash = bcrypt.hashSync(password, 10);
+  const perms = role.permissions || JSON.stringify(getDefaultPermissions(role.base_role));
   try {
     const result = db
-      .prepare('INSERT INTO users (name, email, password_hash, role, permissions) VALUES (?, ?, ?, ?, ?)')
-      .run(name, email, hash, allowedRole, JSON.stringify(getDefaultPermissions(allowedRole)));
+      .prepare('INSERT INTO users (name, email, password_hash, role, role_id, permissions) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(name, email, hash, role.base_role, role.id, perms);
     const created = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
-    return res.json(sanitizeUser(created));
+    return res.json({ ...sanitizeUser(created), role_name: role.name });
   } catch (e) {
     return res.status(400).json({ message: e.message });
   }
@@ -127,67 +170,45 @@ app.patch('/api/users/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ message: 'User not found' });
 
-const {name,email,role,password,is_active,permissions} = req.body || {};
-  const nextRole = ['SuperAdmin', 'Admin', 'User'].includes(role) ? role : existing.role;
-  const nextPermissions = permissions
-    ? JSON.stringify(normalizePermissions(permissions, nextRole))
-    : existing.permissions || JSON.stringify(getDefaultPermissions(nextRole));
+  const { name, email, password, is_active } = req.body || {};
 
-  let passwordHash =
-existing.password_hash;
+  const role = roleRow(req.body?.role_id);
+  let nextRoleText = existing.role;
+  let nextRoleId = existing.role_id;
+  let nextPermissions = existing.permissions || JSON.stringify(getDefaultPermissions(existing.role));
+  if (role) {
+    nextRoleText = role.base_role;
+    nextRoleId = role.id;
+    nextPermissions = role.permissions || JSON.stringify(getDefaultPermissions(role.base_role));
+  }
 
-if(password){
+  let passwordHash = existing.password_hash;
+  if (password) passwordHash = bcrypt.hashSync(password, 10);
 
-passwordHash =
-bcrypt.hashSync(
-password,
-10
-);
-
-}
-
-db.prepare(
-
-`UPDATE users SET
-
-name = COALESCE(?,name),
-
-email = COALESCE(?,email),
-
-role = ?,
-
-permissions = ?,
-
-password_hash = ?,
-
-is_active = COALESCE(?,is_active)
-
-WHERE id = ?`
-
-)
-
-.run(
-
-name,
-
-email,
-
-nextRole,
-
-nextPermissions,
-
-passwordHash,
-
-typeof is_active === 'number'
-? is_active
-: null,
-
-id
-
-);
+  db.prepare(
+    `UPDATE users SET
+      name = COALESCE(?, name),
+      email = COALESCE(?, email),
+      role = ?,
+      role_id = ?,
+      permissions = ?,
+      password_hash = ?,
+      is_active = COALESCE(?, is_active)
+    WHERE id = ?`
+  ).run(
+    name,
+    email,
+    nextRoleText,
+    nextRoleId,
+    nextPermissions,
+    passwordHash,
+    typeof is_active === 'number' ? is_active : null,
+    id
+  );
 
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  return res.json(sanitizeUser(updated));
+  const updatedRole = updated.role_id ? roleRow(updated.role_id) : null;
+  return res.json({ ...sanitizeUser(updated), role_name: updatedRole?.name || updated.role });
 });
 
 app.delete('/api/users/:id', (req, res) => {
@@ -212,6 +233,298 @@ app.post('/api/inquiry-sources', requireAuth, (req, res) => {
 
 app.delete('/api/inquiry-sources/:id', requireAuth, (req, res) => {
   db.prepare('DELETE FROM inquiry_sources WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+/* ----------------------------- Roles & permissions ----------------------------- */
+
+app.get('/api/roles', (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT r.*, COUNT(u.id) AS user_count
+       FROM roles r
+       LEFT JOIN users u ON u.role_id = r.id
+       GROUP BY r.id
+       ORDER BY r.is_system DESC, r.name ASC`
+    )
+    .all()
+    .map((r) => ({ ...r, permissions: normalizePermissions(safeJson(r.permissions), r.base_role) }));
+  res.json(rows);
+});
+
+app.post('/api/roles', (req, res) => {
+  const { name, description, base_role, permissions } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ message: 'Role name required' });
+  const baseRole = ['Admin', 'User'].includes(base_role) ? base_role : 'User';
+  const perms = JSON.stringify(normalizePermissions(permissions || {}, baseRole));
+  try {
+    const r = db
+      .prepare('INSERT INTO roles (name, description, base_role, permissions, is_system) VALUES (?, ?, ?, ?, 0)')
+      .run(name.trim(), description || '', baseRole, perms);
+    res.json(getById('roles', r.lastInsertRowid));
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+});
+
+app.patch('/api/roles/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const role = getById('roles', id);
+  if (!role) return res.status(404).json({ message: 'Role not found' });
+
+  const { name, description, base_role, permissions } = req.body || {};
+  // System roles: only description + permission matrix are editable.
+  const nextName = role.is_system ? role.name : (name?.trim() || role.name);
+  const nextBase = role.is_system
+    ? role.base_role
+    : (['Admin', 'User'].includes(base_role) ? base_role : role.base_role);
+  const nextPerms = permissions
+    ? JSON.stringify(normalizePermissions(permissions, nextBase))
+    : role.permissions;
+
+  db.prepare('UPDATE roles SET name = ?, description = COALESCE(?, description), base_role = ?, permissions = ? WHERE id = ?')
+    .run(nextName, description, nextBase, nextPerms, id);
+
+  // Push refreshed permissions/base_role onto users holding this role.
+  db.prepare('UPDATE users SET role = ?, permissions = ? WHERE role_id = ?').run(nextBase, nextPerms, id);
+
+  res.json(getById('roles', id));
+});
+
+app.delete('/api/roles/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const role = getById('roles', id);
+  if (!role) return res.status(404).json({ message: 'Role not found' });
+  if (role.is_system) return res.status(400).json({ message: 'System roles cannot be deleted' });
+
+  const fallback = db.prepare("SELECT * FROM roles WHERE name = 'User' AND is_system = 1").get();
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE users SET role_id = ?, role = ?, permissions = ? WHERE role_id = ?')
+      .run(fallback.id, fallback.base_role, fallback.permissions, id);
+    db.prepare('DELETE FROM roles WHERE id = ?').run(id);
+  });
+  tx();
+  res.json({ ok: true });
+});
+
+/* ----------------------------- Product categories ----------------------------- */
+
+app.get('/api/product-categories', (_req, res) => {
+  res.json(list('product_categories', 'name ASC'));
+});
+
+app.post('/api/product-categories', (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ message: 'name required' });
+  try {
+    const r = db.prepare('INSERT INTO product_categories (name, is_active) VALUES (?, 1)').run(name.trim());
+    res.json(getById('product_categories', r.lastInsertRowid));
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+});
+
+app.patch('/api/product-categories/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const { name, is_active } = req.body || {};
+  db.prepare('UPDATE product_categories SET name = COALESCE(?, name), is_active = COALESCE(?, is_active) WHERE id = ?')
+    .run(name, typeof is_active === 'number' ? is_active : null, id);
+  res.json(getById('product_categories', id));
+});
+
+app.delete('/api/product-categories/:id', (req, res) => {
+  db.prepare('DELETE FROM product_categories WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+/* --------------------------------- Follow-ups --------------------------------- */
+
+function isManager(user) {
+  return user?.role === 'Admin' || user?.role === 'SuperAdmin';
+}
+
+app.get('/api/follow-ups', (req, res) => {
+  const base = `
+    SELECT f.*, u.name AS assigned_name, cu.name AS created_by_name,
+           i.inquiry_number, i.customer_name AS inquiry_customer,
+           l.customer_name AS lead_customer
+    FROM follow_ups f
+    LEFT JOIN users u ON u.id = f.assigned_to
+    LEFT JOIN users cu ON cu.id = f.created_by
+    LEFT JOIN inquiries i ON i.id = f.inquiry_id
+    LEFT JOIN crm_leads l ON l.id = f.lead_id
+  `;
+  const rows = isManager(req.user)
+    ? db.prepare(`${base} ORDER BY (f.status = 'pending') DESC, f.due_date ASC, f.id DESC`).all()
+    : db.prepare(`${base} WHERE f.assigned_to = ? ORDER BY (f.status = 'pending') DESC, f.due_date ASC, f.id DESC`).all(req.user.id);
+  res.json(rows);
+});
+
+app.get('/api/follow-ups/pending-count', (req, res) => {
+  const row = isManager(req.user)
+    ? db.prepare("SELECT COUNT(*) AS count FROM follow_ups WHERE status = 'pending'").get()
+    : db.prepare("SELECT COUNT(*) AS count FROM follow_ups WHERE status = 'pending' AND assigned_to = ?").get(req.user.id);
+  res.json({ count: row.count });
+});
+
+app.post('/api/follow-ups', (req, res) => {
+  const p = req.body || {};
+  if (!p.assigned_to) return res.status(400).json({ message: 'assigned_to required' });
+  const r = db
+    .prepare(
+      `INSERT INTO follow_ups (inquiry_id, lead_id, assigned_to, created_by, title, notes, due_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`
+    )
+    .run(
+      p.inquiry_id || null,
+      p.lead_id || null,
+      Number(p.assigned_to),
+      req.user.id,
+      p.title || '',
+      p.notes || '',
+      p.due_date || null
+    );
+  res.json(getById('follow_ups', r.lastInsertRowid));
+});
+
+app.patch('/api/follow-ups/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const row = getById('follow_ups', id);
+  if (!row) return res.status(404).json({ message: 'Follow-up not found' });
+  if (!isManager(req.user) && row.assigned_to !== req.user.id) {
+    return res.status(403).json({ message: 'You can only update follow-ups assigned to you' });
+  }
+
+  const p = req.body || {};
+  // Non-managers may not reassign a follow-up.
+  const nextAssigned = isManager(req.user) && p.assigned_to ? Number(p.assigned_to) : row.assigned_to;
+  const nextStatus = p.status || row.status;
+  const completedAt = nextStatus === 'done' ? (row.completed_at || new Date().toISOString()) : null;
+
+  db.prepare(
+    `UPDATE follow_ups SET
+      title = COALESCE(?, title),
+      notes = COALESCE(?, notes),
+      due_date = COALESCE(?, due_date),
+      status = ?,
+      outcome = COALESCE(?, outcome),
+      assigned_to = ?,
+      completed_at = ?
+    WHERE id = ?`
+  ).run(p.title, p.notes, p.due_date, nextStatus, p.outcome, nextAssigned, completedAt, id);
+
+  res.json(getById('follow_ups', id));
+});
+
+app.delete('/api/follow-ups/:id', (req, res) => {
+  db.prepare('DELETE FROM follow_ups WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+/* --------------------------------- Attendance --------------------------------- */
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function ensureAttendanceRow(userId, date) {
+  db.prepare('INSERT OR IGNORE INTO attendance (user_id, date, status) VALUES (?, ?, ?)').run(userId, date, 'present');
+  return db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?').get(userId, date);
+}
+
+app.post('/api/attendance/check-in', (req, res) => {
+  const date = todayStr();
+  const row = ensureAttendanceRow(req.user.id, date);
+  const now = new Date().toISOString();
+  if (!row.check_in) {
+    db.prepare("UPDATE attendance SET check_in = ?, status = 'present' WHERE id = ?").run(now, row.id);
+  }
+  res.json(db.prepare('SELECT * FROM attendance WHERE id = ?').get(row.id));
+});
+
+app.post('/api/attendance/check-out', (req, res) => {
+  const date = todayStr();
+  const row = ensureAttendanceRow(req.user.id, date);
+  const now = new Date().toISOString();
+  db.prepare('UPDATE attendance SET check_out = ? WHERE id = ?').run(now, row.id);
+  res.json(db.prepare('SELECT * FROM attendance WHERE id = ?').get(row.id));
+});
+
+app.get('/api/attendance/today', (req, res) => {
+  res.json(db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?').get(req.user.id, todayStr()) || null);
+});
+
+app.get('/api/attendance/me', (req, res) => {
+  const { from, to } = req.query;
+  let sql = 'SELECT * FROM attendance WHERE user_id = ?';
+  const params = [req.user.id];
+  if (from) { sql += ' AND date >= ?'; params.push(from); }
+  if (to) { sql += ' AND date <= ?'; params.push(to); }
+  sql += ' ORDER BY date DESC';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.get('/api/attendance', (req, res) => {
+  if (!isManager(req.user)) return res.status(403).json({ message: 'Admin access required' });
+  const { date, user_id, from, to } = req.query;
+  let sql = `
+    SELECT a.*, u.name AS user_name, u.email AS user_email
+    FROM attendance a
+    LEFT JOIN users u ON u.id = a.user_id
+    WHERE 1 = 1
+  `;
+  const params = [];
+  if (date) { sql += ' AND a.date = ?'; params.push(date); }
+  if (user_id) { sql += ' AND a.user_id = ?'; params.push(Number(user_id)); }
+  if (from) { sql += ' AND a.date >= ?'; params.push(from); }
+  if (to) { sql += ' AND a.date <= ?'; params.push(to); }
+  sql += ' ORDER BY a.date DESC, u.name ASC';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.post('/api/attendance', (req, res) => {
+  if (!isManager(req.user)) return res.status(403).json({ message: 'Admin access required' });
+  const p = req.body || {};
+  if (!p.user_id || !p.date) return res.status(400).json({ message: 'user_id and date required' });
+  const status = ['present', 'absent', 'half_day', 'leave'].includes(p.status) ? p.status : 'present';
+  db.prepare(
+    `INSERT INTO attendance (user_id, date, status, check_in, check_out, notes, marked_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, date) DO UPDATE SET
+       status = excluded.status,
+       check_in = COALESCE(excluded.check_in, attendance.check_in),
+       check_out = COALESCE(excluded.check_out, attendance.check_out),
+       notes = COALESCE(excluded.notes, attendance.notes),
+       marked_by = excluded.marked_by`
+  ).run(Number(p.user_id), p.date, status, p.check_in || null, p.check_out || null, p.notes || null, req.user.id);
+  res.json(db.prepare('SELECT * FROM attendance WHERE user_id = ? AND date = ?').get(Number(p.user_id), p.date));
+});
+
+app.patch('/api/attendance/:id', (req, res) => {
+  if (!isManager(req.user)) return res.status(403).json({ message: 'Admin access required' });
+  const id = Number(req.params.id);
+  const row = getById('attendance', id);
+  if (!row) return res.status(404).json({ message: 'Attendance not found' });
+  const p = req.body || {};
+  const status = ['present', 'absent', 'half_day', 'leave'].includes(p.status) ? p.status : null;
+  db.prepare(
+    `UPDATE attendance SET
+      status = COALESCE(?, status),
+      check_in = COALESCE(?, check_in),
+      check_out = COALESCE(?, check_out),
+      notes = COALESCE(?, notes),
+      marked_by = ?
+    WHERE id = ?`
+  ).run(status, p.check_in, p.check_out, p.notes, req.user.id, id);
+  res.json(getById('attendance', id));
+});
+
+app.delete('/api/attendance/:id', (req, res) => {
+  if (!isManager(req.user)) return res.status(403).json({ message: 'Admin access required' });
+  const id = Number(req.params.id);
+  const row = getById('attendance', id);
+  if (!row) return res.status(404).json({ message: 'Attendance not found' });
+  db.prepare('DELETE FROM attendance WHERE id = ?').run(id);
   res.json({ ok: true });
 });
 
@@ -396,26 +709,13 @@ app.delete(
 '/api/product-subgroups/:id',
 requireAuth,
 (req,res)=>{
-
-db.prepare(
-`
-DELETE FROM
-product_subgroups
-
-WHERE id=?
-`
-)
-
-.run(
-Number(
-req.params.id
-)
-);
-
-res.json({
-ok:true
-});
-
+  const id = Number(req.params.id);
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE products SET subgroup_id = NULL WHERE subgroup_id = ?').run(id);
+    db.prepare('DELETE FROM product_subgroups WHERE id = ?').run(id);
+  });
+  tx();
+  res.json({ ok: true });
 });
 
 app.post('/api/product-groups', requireAuth, (req, res) => {
@@ -434,7 +734,13 @@ app.patch('/api/product-groups/:id', requireAuth, (req, res) => {
 });
 
 app.delete('/api/product-groups/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM product_groups WHERE id = ?').run(Number(req.params.id));
+  const id = Number(req.params.id);
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE products SET group_id = NULL WHERE group_id = ?').run(id);
+    db.prepare('DELETE FROM product_subgroups WHERE group_id = ?').run(id);
+    db.prepare('DELETE FROM product_groups WHERE id = ?').run(id);
+  });
+  tx();
   res.json({ ok: true });
 });
 
@@ -582,7 +888,15 @@ stock_quantity = COALESCE(?, stock_quantity)
 });
 
 app.delete('/api/products/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM products WHERE id = ?').run(Number(req.params.id));
+  const id = Number(req.params.id);
+  const used = db.prepare('SELECT COUNT(*) AS c FROM quotation_items WHERE product_id = ?').get(id).c;
+  if (used > 0) {
+    return res.status(409).json({
+      message: `This product is used in ${used} quotation item(s). Remove it from those quotations first.`,
+      code: 'PRODUCT_IN_USE',
+    });
+  }
+  db.prepare('DELETE FROM products WHERE id = ?').run(id);
   res.json({ ok: true });
 });
 
@@ -862,6 +1176,19 @@ app.patch('/api/crm/leads/:id/stage', requireAuth, (req, res) => {
   const { stage } = req.body || {};
   db.prepare('UPDATE crm_leads SET stage = ? WHERE id = ?').run(stage, id);
   res.json(getById('crm_leads', id));
+});
+
+app.delete('/api/crm/leads/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const lead = getById('crm_leads', id);
+  if (!lead) return res.status(404).json({ message: 'Lead not found' });
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM crm_activities WHERE lead_id = ?').run(id);
+    db.prepare('DELETE FROM follow_ups WHERE lead_id = ?').run(id);
+    db.prepare('DELETE FROM crm_leads WHERE id = ?').run(id);
+  });
+  tx();
+  res.json({ ok: true });
 });
 
 app.get('/api/crm/leads/:id/activities', requireAuth, (req, res) => {
@@ -1534,6 +1861,12 @@ pareek_logo:
     '/var/www/quotify/backend/server/assets/pareek-logo.jpg',
     'base64'
   ),
+greaves_logo:
+  'data:image/jpeg;base64,' +
+  fs.readFileSync(
+    '/var/www/quotify/backend/server/assets/greaves-logo.jpg',
+    'base64'
+  ),
   attention_person: quotation.attention_person || '',
   subject: quotation.subject || '',
   application: quotation.application || '',
@@ -1559,7 +1892,7 @@ settings?.quotation_terms ||
 };
 let html;
 
-const template = req.query.template || 'pump';
+const template = req.query.template || 'baerlocher';
 
 switch (template) {
   case 'pump':
@@ -1578,8 +1911,20 @@ switch (template) {
     html = serviceTemplate(templateData);
     break;
 
+  case 'baerlocher':
+    html = baerlocherTemplate(templateData);
+    break;
+
+  case 'choithram':
+    html = choithramTemplate(templateData);
+    break;
+
+  case 'greaves':
+    html = greavesTemplate(templateData);
+    break;
+
   default:
-    html = pumpTemplate(templateData);
+    html = baerlocherTemplate(templateData);
 }
 
 const browser=
