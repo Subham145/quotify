@@ -18,6 +18,14 @@ import { serviceTemplate } from './templates/serviceTemplate.js';
 import { baerlocherTemplate } from './templates/baerlocherTemplate.js';
 import { choithramTemplate } from './templates/choithramTemplate.js';
 import { greavesTemplate } from './templates/greavesTemplate.js';
+import { dewasTemplate } from './templates/dewasTemplate.js';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+import { PDFParse } from 'pdf-parse';
+import { parseCatalogText } from './catalogParser.js';
 
 initDb();
 
@@ -41,7 +49,7 @@ const app = express();
 const PORT = Number(process.env.API_PORT || 4000);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 app.use('/api/users', requireAuth, (req, res, next) => {
   if (req.path === '/assignable') return next();
@@ -774,104 +782,153 @@ app.get('/api/products/export/csv', requireAuth, (_req, res) => {
   res.send(toCsv(rows));
 });
 
-app.post('/api/products', requireAuth, (req, res) => {
+app.post('/api/products/parse-catalog-pdf', requireAuth, async (req, res) => {
+  try {
+    const { file_base64 } = req.body || {};
+    if (!file_base64) {
+      return res.status(400).json({ message: 'file_base64 is required' });
+    }
+    const base64Data = file_base64.replace(/^data:application\/pdf;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const parser = new PDFParse({ data: buffer });
+    const pdfData = await parser.getText();
+    const text = pdfData.text || '';
+    await parser.destroy();
 
-  const p = req.body || {};
-
-  const r = db.prepare(
-
-`
-INSERT INTO products (
-
-product_name,
-code,
-group_id,
-subgroup_id,
-category,
-hsn_code,
-price,
-gst_rate,
-unit,
-stock_quantity
-
-)
-
-VALUES (
-
-?,
-?,
-?,
-?,
-?,
-?,
-?,
-?,
-?,
-?
-
-)
-
-`
-
-)
-
-.run(
-
-p.product_name,
-
-p.code || '',
-
-p.group_id || null,
-
-p.subgroup_id || null,
-
-p.category || '',
-
-p.hsn_code || '',
-
-Number(
-p.price || 0
-),
-
-Number(
-p.gst_rate || 0
-),
-
-p.unit || 'piece',
-
-Number(
-p.stock_quantity || 0
-)
-
-);
-
-res.json(
-
-getById(
-'products',
-r.lastInsertRowid
-)
-
-);
-
+    const parsedProducts = parseCatalogText(text);
+    res.json({
+      ok: true,
+      count: parsedProducts.length,
+      products: parsedProducts,
+      preview_text: text.slice(0, 400)
+    });
+  } catch (err) {
+    console.error('Catalog PDF Parse Error:', err);
+    res.status(500).json({ message: 'Failed to parse Catalog PDF: ' + err.message });
+  }
 });
+
+app.post('/api/products/bulk-create', requireAuth, (req, res) => {
+  const { products } = req.body || {};
+  if (!Array.isArray(products) || products.length === 0) {
+    return res.status(400).json({ message: 'No products provided' });
+  }
+
+  const insertGroup = db.prepare('INSERT OR IGNORE INTO product_groups (group_name) VALUES (?)');
+  const getGroup = db.prepare('SELECT id FROM product_groups WHERE group_name = ?');
+
+  const insertProduct = db.prepare(`
+    INSERT INTO products (
+      product_name, code, group_id, subgroup_id, category, hsn_code, price, gst_rate, unit, stock_quantity,
+      hp, kw, head, flow_rate, pipe_size, solid_size, stages, specs
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?
+    )
+  `);
+
+  let insertedCount = 0;
+  const insertMany = db.transaction((list) => {
+    for (const p of list) {
+      let groupId = p.group_id ? Number(p.group_id) : null;
+      if (!groupId && p.group_name) {
+        insertGroup.run(p.group_name.trim());
+        const grp = getGroup.get(p.group_name.trim());
+        if (grp) groupId = grp.id;
+      }
+
+      insertProduct.run(
+        p.product_name,
+        p.code || p.product_name || '',
+        groupId,
+        p.subgroup_id || null,
+        p.category || 'DEWAS',
+        p.hsn_code || '84137010',
+        Number(p.price || 0),
+        Number(p.gst_rate || 18),
+        p.unit || 'piece',
+        Number(p.stock_quantity || 0),
+        p.hp || '',
+        p.kw || '',
+        p.head || '',
+        p.flow_rate || '',
+        p.pipe_size || '',
+        p.solid_size || '',
+        p.stages || '',
+        p.specs ? (typeof p.specs === 'object' ? JSON.stringify(p.specs) : String(p.specs)) : ''
+      );
+      insertedCount++;
+    }
+  });
+
+  try {
+    insertMany(products);
+    res.json({ ok: true, count: insertedCount });
+  } catch (err) {
+    console.error('Bulk insert error:', err);
+    res.status(500).json({ message: 'Failed to import products: ' + err.message });
+  }
+});
+
+app.post('/api/products', requireAuth, (req, res) => {
+  const p = req.body || {};
+  const r = db.prepare(`
+    INSERT INTO products (
+      product_name, code, group_id, subgroup_id, category, hsn_code, price, gst_rate, unit, stock_quantity,
+      hp, kw, head, flow_rate, pipe_size, solid_size, stages, specs
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?
+    )
+  `).run(
+    p.product_name,
+    p.code || '',
+    p.group_id || null,
+    p.subgroup_id || null,
+    p.category || '',
+    p.hsn_code || '',
+    Number(p.price || 0),
+    Number(p.gst_rate || 0),
+    p.unit || 'piece',
+    Number(p.stock_quantity || 0),
+    p.hp || '',
+    p.kw || '',
+    p.head || '',
+    p.flow_rate || '',
+    p.pipe_size || '',
+    p.solid_size || '',
+    p.stages || '',
+    p.specs || ''
+  );
+
+  res.json(getById('products', r.lastInsertRowid));
+});
+
 app.patch('/api/products/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const p = req.body || {};
-  db.prepare(
-    `UPDATE products SET
-product_name = COALESCE(?, product_name),
-code = COALESCE(?, code),
-group_id = COALESCE(?, group_id),
-subgroup_id = COALESCE(?, subgroup_id),
-category = COALESCE(?, category),
-hsn_code = COALESCE(?, hsn_code),
-price = COALESCE(?, price),
-gst_rate = COALESCE(?, gst_rate),
-unit = COALESCE(?, unit),
-stock_quantity = COALESCE(?, stock_quantity)
-    WHERE id = ?`
-  ).run(
+  db.prepare(`
+    UPDATE products SET
+      product_name = COALESCE(?, product_name),
+      code = COALESCE(?, code),
+      group_id = COALESCE(?, group_id),
+      subgroup_id = COALESCE(?, subgroup_id),
+      category = COALESCE(?, category),
+      hsn_code = COALESCE(?, hsn_code),
+      price = COALESCE(?, price),
+      gst_rate = COALESCE(?, gst_rate),
+      unit = COALESCE(?, unit),
+      stock_quantity = COALESCE(?, stock_quantity),
+      hp = COALESCE(?, hp),
+      kw = COALESCE(?, kw),
+      head = COALESCE(?, head),
+      flow_rate = COALESCE(?, flow_rate),
+      pipe_size = COALESCE(?, pipe_size),
+      solid_size = COALESCE(?, solid_size),
+      stages = COALESCE(?, stages),
+      specs = COALESCE(?, specs)
+    WHERE id = ?
+  `).run(
     p.product_name,
     p.code,
     p.group_id,
@@ -882,6 +939,14 @@ stock_quantity = COALESCE(?, stock_quantity)
     p.gst_rate,
     p.unit,
     p.stock_quantity,
+    p.hp,
+    p.kw,
+    p.head,
+    p.flow_rate,
+    p.pipe_size,
+    p.solid_size,
+    p.stages,
+    p.specs,
     id
   );
   res.json(getById('products', id));
@@ -1226,18 +1291,112 @@ app.get('/api/quotations/:id', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const quotation = getById('quotations', id);
   if (!quotation) return res.status(404).json({ message: 'Not found' });
-  const items = db.prepare('SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY id ASC').all(id);
+  const rawItems = db.prepare('SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY id ASC').all(id);
+  const items = rawItems.map(item => ({
+    ...item,
+    custom_fields: safeJson(item.custom_fields, {})
+  }));
   res.json({ ...quotation, items });
+});
+
+app.post('/api/quotations/parse-pdf', requireAuth, async (req, res) => {
+  try {
+    const { file_base64 } = req.body || {};
+    if (!file_base64) {
+      return res.status(400).json({ message: 'file_base64 is required' });
+    }
+
+    const base64Data = file_base64.replace(/^data:application\/pdf;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const parser = new PDFParse({ data: buffer });
+    const pdfData = await parser.getText();
+    const text = pdfData.text || '';
+    await parser.destroy();
+
+    const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const extractedItems = [];
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+
+      const qtyMatch = line.match(/(?:qty|quantity|nos|pcs)[:\s]*(\d+)/i) || line.match(/\b(\d+)\s*(?:nos|pcs|set|unit|numbers|items?)/i);
+      const rateMatch = line.match(/(?:rate|price|unit price|rs\.?|inr)[:\s]*([\d,]+(?:\.\d+)?)/i) || line.match(/₹\s*([\d,]+(?:\.\d+)?)/);
+      const hpMatch = line.match(/(\d+(?:\.\d+)?)\s*(?:hp|kw)/i);
+      const headMatch = line.match(/(?:head[:\s]*)?(\d+(?:\.\d+)?)\s*(?:m|mtr|meters)/i);
+      const flowMatch = line.match(/(?:flow|discharge)[:\s]*(\d+(?:\.\d+)?)\s*(?:m3\/hr|lps|lpm)?/i);
+
+      const hasProductKeywords = /(pump|motor|engine|set|digiset|dewas|wadi|kirloskar|greaves|model|hp|head|flow|panel|valve|cable|impeller)/i.test(line);
+
+      if (hasProductKeywords || qtyMatch || rateMatch) {
+        const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+        const rate = rateMatch ? parseFloat(rateMatch[1].replace(/,/g, '')) : 0;
+        const hp = hpMatch ? hpMatch[1] + ' HP' : '';
+        const head = headMatch ? headMatch[1] + ' m' : '';
+        const flow = flowMatch ? flowMatch[1] + ' m3/hr' : '';
+
+        let desc = line
+          .replace(/(?:qty|quantity|nos|pcs)[:\s]*\d+/gi, '')
+          .replace(/(?:rate|price|rs\.?|inr)[:\s]*[\d,]+(?:\.\d+)?/gi, '')
+          .replace(/₹\s*[\d,]+(?:\.\d+)?/gi, '')
+          .trim();
+
+        if (desc.length > 2) {
+          extractedItems.push({
+            description: desc,
+            model: line.match(/model[:\s]*([A-Z0-9\-\/]+)/i)?.[1] || '',
+            motor_hp: hp,
+            head: head,
+            flow_rate: flow,
+            size: line.match(/size[:\s]*([A-Z0-9\-\/x\s]+)/i)?.[1] || '',
+            qty: qty > 0 ? qty : 1,
+            rate: rate >= 0 ? rate : 0,
+            discount_pct: 0,
+            gst_pct: 18,
+            custom_fields: {}
+          });
+        }
+      }
+    }
+
+    if (extractedItems.length === 0 && rawLines.length > 0) {
+      const nonHeaderLines = rawLines.filter(l => l.length > 3 && !/invoice|quotation|terms|page|total|gst|tax|date|customer/i.test(l));
+      nonHeaderLines.slice(0, 10).forEach((line) => {
+        extractedItems.push({
+          description: line,
+          model: '',
+          motor_hp: '',
+          head: '',
+          flow_rate: '',
+          size: '',
+          qty: 1,
+          rate: 0,
+          discount_pct: 0,
+          gst_pct: 18,
+          custom_fields: {}
+        });
+      });
+    }
+
+    res.json({
+      ok: true,
+      text_preview: text.slice(0, 500),
+      items: extractedItems
+    });
+  } catch (err) {
+    console.error('PDF Parse Error:', err);
+    res.status(500).json({ message: 'Failed to parse PDF file: ' + err.message });
+  }
 });
 
 app.post('/api/quotations', requireAuth, (req, res) => {
   const p = req.body || {};
-console.log('QUOTATION PAYLOAD =>');
-console.log(JSON.stringify(req.body, null, 2));
   const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get();
   const prefix = settings?.quotation_prefix || 'QT-';
   const quotationNumber = p.quotation_number || nextDocNo(prefix, 'quotation_no');
   const templateType = p.template_type || 'pump';
+  const category = p.category || 'DEWAS';
+
   if (p.company_name && !p.allow_duplicate_company) {
     const dup = db
       .prepare('SELECT id, quotation_number FROM quotations WHERE lower(company_name) = lower(?) LIMIT 1')
@@ -1256,86 +1415,95 @@ console.log(JSON.stringify(req.body, null, 2));
   const tx = db.transaction(() => {
     const q = db
       .prepare(
-`INSERT INTO quotations (
-  quotation_number,
-  customer_id,
-  customer_name,
-  company_name,
-  assigned_to,
-  status,
-  subtotal,
-  total_discount,
-  total_gst,
-  total_amount,
-  notes,
-  template_type,
-attention_person,
-subject,
-application,
-flow,
-head
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO quotations (
+          quotation_number,
+          customer_id,
+          customer_name,
+          company_name,
+          assigned_to,
+          status,
+          category,
+          subtotal,
+          total_discount,
+          total_gst,
+          total_amount,
+          notes,
+          template_type,
+          attention_person,
+          subject,
+          application,
+          flow,
+          head
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        quotationNumber,
+        p.customer_id || null,
+        p.customer_name || '',
+        p.company_name || '',
+        p.assigned_to || req.user.id,
+        p.status || 'draft',
+        category,
+        totals.subtotal,
+        totals.totalDiscount,
+        totals.totalGst,
+        totals.totalAmount,
+        p.notes || '',
+        templateType,
+        p.attention_person || '',
+        p.subject || '',
+        p.application || '',
+        p.flow || '',
+        p.head || ''
+      );
 
-)
-.run(
-  quotationNumber,
-  p.customer_id || null,
-  p.customer_name || '',
-  p.company_name || '',
-  p.assigned_to || req.user.id,
-  p.status || 'draft',
-  totals.subtotal,
-  totals.totalDiscount,
-  totals.totalGst,
-  totals.totalAmount,
-  p.notes || '',
-templateType,
-p.attention_person || '',
-p.subject || '',
-p.application || '',
-p.flow || '',
-p.head || ''
-);
-const insertItem = db.prepare(
-  `INSERT INTO quotation_items (
-    quotation_id,
-    product_id,
-    description,
-    qty,
-    rate,
-    discount_pct,
-    gst_pct,
-    line_total,
-    model,
-    motor_hp,
-    head,
-    flow_rate,
-    size
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-);
+    const insertItem = db.prepare(
+      `INSERT INTO quotation_items (
+        quotation_id,
+        product_id,
+        description,
+        qty,
+        rate,
+        discount_pct,
+        gst_pct,
+        line_total,
+        model,
+        motor_hp,
+        head,
+        flow_rate,
+        size,
+        custom_fields
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
 
-totals.items.forEach((item) => {
-  insertItem.run(
-    q.lastInsertRowid,
-    item.product_id,
-    item.description,
-    item.qty,
-    item.rate,
-    item.discount_pct,
-    item.gst_pct,
-    item.line_total,
-    item.model || '',
-    item.motor_hp || '',
-    item.head || '',
-    item.flow_rate || '',
-    item.size || ''
-  );
-});
+    totals.items.forEach((item) => {
+      const customFieldsJson = item.custom_fields
+        ? (typeof item.custom_fields === 'object' ? JSON.stringify(item.custom_fields) : item.custom_fields)
+        : null;
+
+      insertItem.run(
+        q.lastInsertRowid,
+        item.product_id || null,
+        item.description || '',
+        item.qty || 0,
+        item.rate || 0,
+        item.discount_pct || 0,
+        item.gst_pct || 0,
+        item.line_total || 0,
+        item.model || '',
+        item.motor_hp || '',
+        item.head || '',
+        item.flow_rate || '',
+        item.size || '',
+        customFieldsJson
+      );
+    });
+
     return q.lastInsertRowid;
   });
 
   const id = tx();
-  res.json({ id, quotation_number: quotationNumber, ...totals });
+  res.json({ id, quotation_number: quotationNumber, category, ...totals });
 });
 
 app.patch('/api/quotations/:id', requireAuth, (req, res) => {
@@ -1353,6 +1521,7 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           company_name = COALESCE(?, company_name),
           assigned_to = COALESCE(?, assigned_to),
           status = COALESCE(?, status),
+          category = COALESCE(?, category),
           notes = COALESCE(?, notes),
           subtotal = ?,
           total_discount = ?,
@@ -1365,6 +1534,7 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
         p.company_name,
         p.assigned_to,
         p.status,
+        p.category,
         p.notes,
         totals.subtotal,
         totals.totalDiscount,
@@ -1374,42 +1544,48 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
       );
 
       db.prepare('DELETE FROM quotation_items WHERE quotation_id = ?').run(id);
-const insertItem = db.prepare(
-  `INSERT INTO quotation_items (
-    quotation_id,
-    product_id,
-    description,
-    qty,
-    rate,
-    discount_pct,
-    gst_pct,
-    line_total,
-    model,
-    motor_hp,
-    head,
-    flow_rate,
-    size
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-);
 
-totals.items.forEach((item) => {
-  insertItem.run(
-    id,
-    item.product_id,
-    item.description,
-    item.qty,
-    item.rate,
-    item.discount_pct,
-    item.gst_pct,
-    item.line_total,
-    item.model || '',
-    item.motor_hp || '',
-    item.head || '',
-    item.flow_rate || '',
-    item.size || ''
-  );
-});
+      const insertItem = db.prepare(
+        `INSERT INTO quotation_items (
+          quotation_id,
+          product_id,
+          description,
+          qty,
+          rate,
+          discount_pct,
+          gst_pct,
+          line_total,
+          model,
+          motor_hp,
+          head,
+          flow_rate,
+          size,
+          custom_fields
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
 
+      totals.items.forEach((item) => {
+        const customFieldsJson = item.custom_fields
+          ? (typeof item.custom_fields === 'object' ? JSON.stringify(item.custom_fields) : item.custom_fields)
+          : null;
+
+        insertItem.run(
+          id,
+          item.product_id || null,
+          item.description || '',
+          item.qty || 0,
+          item.rate || 0,
+          item.discount_pct || 0,
+          item.gst_pct || 0,
+          item.line_total || 0,
+          item.model || '',
+          item.motor_hp || '',
+          item.head || '',
+          item.flow_rate || '',
+          item.size || '',
+          customFieldsJson
+        );
+      });
     } else {
       db.prepare(
         `UPDATE quotations SET
@@ -1418,9 +1594,10 @@ totals.items.forEach((item) => {
           company_name = COALESCE(?, company_name),
           assigned_to = COALESCE(?, assigned_to),
           status = COALESCE(?, status),
+          category = COALESCE(?, category),
           notes = COALESCE(?, notes)
         WHERE id = ?`
-      ).run(p.customer_id, p.customer_name, p.company_name, p.assigned_to, p.status, p.notes, id);
+      ).run(p.customer_id, p.customer_name, p.company_name, p.assigned_to, p.status, p.category, p.notes, id);
     }
   });
 
@@ -1833,42 +2010,62 @@ message:'Quotation not found'
 });
 }
 
-const items=db
-.prepare(
-'SELECT * FROM quotation_items WHERE quotation_id=?'
-)
-.all(id);
+const rawItems = db
+  .prepare(
+    `SELECT qi.*, p.product_name, p.code as product_code, p.category as product_category 
+     FROM quotation_items qi 
+     LEFT JOIN products p ON qi.product_id = p.id 
+     WHERE qi.quotation_id = ?`
+  )
+  .all(id);
+
+const items = rawItems.map((it) => {
+  let cf = {};
+  if (it.custom_fields) {
+    try {
+      cf = typeof it.custom_fields === 'string' ? JSON.parse(it.custom_fields) : it.custom_fields;
+    } catch (e) {
+      cf = {};
+    }
+  }
+  return {
+    ...it,
+    custom_fields: cf,
+    model: cf.model || cf.pump_model || it.product_name || it.description || it.model || '',
+    motor_hp: cf.motor_hp || cf.hp || cf.power || it.motor_hp || it.hp || '',
+    head: cf.head || it.head || quotation.head || '',
+    flow_rate: cf.flow_rate || cf.flow || it.flow_rate || quotation.flow || '',
+    size: cf.suc_del_size || cf.size || cf.delivery_size || it.size || '',
+    solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || ''
+  };
+});
 
 const settings = db
   .prepare('SELECT * FROM company_settings WHERE id = 1')
   .get();
+
+const getAssetBase64 = (fileName) => {
+  try {
+    const p = path.join(__dirname, 'assets', fileName);
+    if (fs.existsSync(p)) {
+      return 'data:image/jpeg;base64,' + fs.readFileSync(p, 'base64');
+    }
+  } catch (e) {}
+  return '';
+};
 
 const templateData = {
   quotation_number: quotation.quotation_number,
   date: quotation.created_at,
   customer_name: quotation.customer_name,
   company_name: quotation.company_name,
-kirloskar_logo:
-  'data:image/jpeg;base64,' +
-  fs.readFileSync(
-    '/var/www/quotify/backend/server/assets/kirloskar-logo.jpg',
-    'base64'
-  ),
-
-pareek_logo:
-  'data:image/jpeg;base64,' +
-  fs.readFileSync(
-    '/var/www/quotify/backend/server/assets/pareek-logo.jpg',
-    'base64'
-  ),
-greaves_logo:
-  'data:image/jpeg;base64,' +
-  fs.readFileSync(
-    '/var/www/quotify/backend/server/assets/greaves-logo.jpg',
-    'base64'
-  ),
+  customer_address: quotation.address || quotation.city || '',
+  kirloskar_logo: getAssetBase64('kirloskar-logo.jpg'),
+  pareek_logo: getAssetBase64('pareek-logo.jpg'),
+  greaves_logo: getAssetBase64('greaves-logo.jpg'),
   attention_person: quotation.attention_person || '',
   subject: quotation.subject || '',
+  offer_for: quotation.offer_for || quotation.subject || '',
   application: quotation.application || '',
   flow: quotation.flow || '',
   head: quotation.head || '',
@@ -1881,20 +2078,24 @@ greaves_logo:
   total_amount: quotation.total_amount || 0,
 
   notes: quotation.notes || '',
-terms_conditions:
-quotation.terms_conditions ||
-settings?.quotation_terms ||
-'',
+  terms_conditions:
+    quotation.terms_conditions ||
+    settings?.quotation_terms ||
+    '',
   from_company_name: settings?.company_name || '',
   from_address: settings?.address || '',
   from_email: settings?.email || '',
   from_phone: settings?.mobile || ''
 };
+
 let html;
+const template = req.query.template || (quotation.category?.toLowerCase() === 'dewas' ? 'dewas' : 'dewas');
 
-const template = req.query.template || 'baerlocher';
+switch (template.toLowerCase()) {
+  case 'dewas':
+    html = dewasTemplate(templateData);
+    break;
 
-switch (template) {
   case 'pump':
     html = pumpTemplate(templateData);
     break;
@@ -1924,7 +2125,7 @@ switch (template) {
     break;
 
   default:
-    html = baerlocherTemplate(templateData);
+    html = dewasTemplate(templateData);
 }
 
 const browser=
