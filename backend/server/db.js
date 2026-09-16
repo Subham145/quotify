@@ -120,6 +120,7 @@ export function initDb() {
       company_name TEXT,
       assigned_to INTEGER,
       status TEXT NOT NULL DEFAULT 'draft',
+      category TEXT NOT NULL DEFAULT 'DEWAS',
       subtotal REAL NOT NULL DEFAULT 0,
       total_discount REAL NOT NULL DEFAULT 0,
       total_gst REAL NOT NULL DEFAULT 0,
@@ -140,6 +141,7 @@ export function initDb() {
       discount_pct REAL NOT NULL DEFAULT 0,
       gst_pct REAL NOT NULL DEFAULT 0,
       line_total REAL NOT NULL,
+      custom_fields TEXT,
       FOREIGN KEY(quotation_id) REFERENCES quotations(id),
       FOREIGN KEY(product_id) REFERENCES products(id)
     );
@@ -271,6 +273,24 @@ export function initDb() {
   if (!hasRoleIdCol) {
     db.exec('ALTER TABLE users ADD COLUMN role_id INTEGER');
   }
+
+  const quotationColumns = db.prepare('PRAGMA table_info(quotations)').all();
+  if (!quotationColumns.some((c) => c.name === 'category')) {
+    db.exec("ALTER TABLE quotations ADD COLUMN category TEXT DEFAULT 'DEWAS'");
+  }
+
+  const quotationItemColumns = db.prepare('PRAGMA table_info(quotation_items)').all();
+  if (!quotationItemColumns.some((c) => c.name === 'custom_fields')) {
+    db.exec('ALTER TABLE quotation_items ADD COLUMN custom_fields TEXT');
+  }
+
+  const productColumns = db.prepare('PRAGMA table_info(products)').all();
+  const productColsToAdd = ['hp', 'kw', 'head', 'flow_rate', 'pipe_size', 'solid_size', 'stages', 'specs'];
+  productColsToAdd.forEach((col) => {
+    if (!productColumns.some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE products ADD COLUMN ${col} TEXT`);
+    }
+  });
 
   const usersSqlRow = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'")

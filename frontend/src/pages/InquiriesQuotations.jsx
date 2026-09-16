@@ -41,63 +41,27 @@ export default function InquiriesQuotations() {
   const [editingInquiry,setEditingInquiry]=useState(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState(null);
-  const [selectedTemplate, setSelectedTemplate] = useState('baerlocher');
+  const [selectedTemplate, setSelectedTemplate] = useState('dewas');
 
   const [editInquiryForm,setEditInquiryForm]=useState({customer_name:'',company:'',mobile:'',product_interested:'',follow_up_date:'',status:'new'});
   const [inquiryForm, setInquiryForm] = useState({customer_name: '',company: '',mobile: '',source: 'WhatsApp',product_interested:'',status: 'new',follow_up_date: '',});
   const [showManualSource, setShowManualSource] = useState(false);
   const [manualSource, setManualSource] = useState('');
 
-  const [quotationForm,setQuotationForm]=useState({
+  const [parsingPdf, setParsingPdf] = useState(false);
 
-inquiry_id:'',
-
-customer_name:'',
-
-company_name:'',
-
-attention_person:'',
-
-subject:'',
-
-application:'',
-
-flow:'',
-
-head:'',
-
-status:'draft',
-
-items:[{
-
-description:'',
-
-model:'',
-
-hp:'',
-
-head:'',
-
-flow:'',
-
-size:'',
-
-qty:1,
-
-rate:0,
-
-discount_pct:0,
-
-gst_pct:18
-
-}]
-});
-
-const addItem = () => {
-  setQuotationForm({
-    ...quotationForm,
+  const [quotationForm, setQuotationForm] = useState({
+    inquiry_id: '',
+    customer_name: '',
+    company_name: '',
+    attention_person: '',
+    subject: '',
+    application: '',
+    flow: '',
+    head: '',
+    status: 'draft',
+    category: 'DEWAS',
     items: [
-      ...quotationForm.items,
       {
         description: '',
         model: '',
@@ -108,31 +72,146 @@ const addItem = () => {
         qty: 1,
         rate: 0,
         discount_pct: 0,
-        gst_pct: 18
-      }
-    ]
+        gst_pct: 18,
+        custom_fields: {},
+      },
+    ],
   });
-};
 
-const removeItem = (index) => {
-  setQuotationForm({
-    ...quotationForm,
-    items: quotationForm.items.filter((_, i) => i !== index)
-  });
-};
-
-const updateItem = (index, field, value) => {
-  const items = [...quotationForm.items];
-  items[index] = {
-    ...items[index],
-    [field]: value
+  const addItem = () => {
+    setQuotationForm((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          description: '',
+          model: '',
+          hp: '',
+          head: '',
+          flow: '',
+          size: '',
+          qty: 1,
+          rate: 0,
+          discount_pct: 0,
+          gst_pct: 18,
+          custom_fields: {},
+        },
+      ],
+    }));
   };
 
-  setQuotationForm({
-    ...quotationForm,
-    items
-  });
-};
+  const removeItem = (index) => {
+    if (quotationForm.items.length <= 1) return;
+    setQuotationForm((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateItem = (index, field, value) => {
+    setQuotationForm((prev) => {
+      const items = [...prev.items];
+      items[index] = { ...items[index], [field]: value };
+      return { ...prev, items };
+    });
+  };
+
+  const updateItemCustomField = (itemIndex, key, value) => {
+    setQuotationForm((prev) => {
+      const items = [...prev.items];
+      const custom_fields = { ...(items[itemIndex].custom_fields || {}), [key]: value };
+      items[itemIndex] = { ...items[itemIndex], custom_fields };
+      return { ...prev, items };
+    });
+  };
+
+  const addCustomFieldToItem = (itemIndex) => {
+    const name = window.prompt('Enter field name (e.g. Impeller Dia, MOC, Phase):');
+    if (!name || !name.trim()) return;
+    updateItemCustomField(itemIndex, name.trim(), '');
+  };
+
+  const deleteCustomFieldFromItem = (itemIndex, key) => {
+    setQuotationForm((prev) => {
+      const items = [...prev.items];
+      const custom_fields = { ...(items[itemIndex].custom_fields || {}) };
+      delete custom_fields[key];
+      items[itemIndex] = { ...items[itemIndex], custom_fields };
+      return { ...prev, items };
+    });
+  };
+
+  const handleSelectProduct = (itemIndex, productIdOrName) => {
+    const prod = products.find(p => String(p.id) === String(productIdOrName) || p.product_name?.toLowerCase() === String(productIdOrName).toLowerCase());
+    if (!prod) return;
+
+    setQuotationForm(prev => {
+      const items = [...prev.items];
+      items[itemIndex] = {
+        ...items[itemIndex],
+        product_id: prod.id,
+        description: prod.product_name,
+        model: prod.product_name,
+        hp: prod.hp || (prod.kw ? `${prod.kw} kW` : items[itemIndex].hp),
+        head: prod.head || items[itemIndex].head,
+        flow: prod.flow_rate || items[itemIndex].flow,
+        size: prod.pipe_size || items[itemIndex].size,
+        solid_size: prod.solid_size || items[itemIndex].solid_size,
+        rate: Number(prod.price || 0) > 0 ? Number(prod.price) : items[itemIndex].rate,
+        gst_pct: Number(prod.gst_rate || 18),
+      };
+      return { ...prev, items };
+    });
+  };
+
+  const handlePdfUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setParsingPdf(true);
+    setActionError('');
+    setActionMessage('Parsing PDF file...');
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const base64 = evt.target.result;
+        const res = await api('/quotations/parse-pdf', {
+          method: 'POST',
+          body: JSON.stringify({ file_base64: base64 }),
+        });
+
+        if (res?.items && res.items.length > 0) {
+          const items = res.items.map((it) => ({
+            description: it.description || '',
+            model: it.model || '',
+            hp: it.motor_hp || '',
+            head: it.head || '',
+            flow: it.flow_rate || '',
+            size: it.size || '',
+            qty: Number(it.qty || 1),
+            rate: Number(it.rate || 0),
+            discount_pct: Number(it.discount_pct || 0),
+            gst_pct: Number(it.gst_pct || 18),
+            custom_fields: it.custom_fields || {},
+          }));
+
+          setQuotationForm((prev) => ({
+            ...prev,
+            items,
+          }));
+
+          setActionMessage(`Extracted ${res.items.length} line items from PDF successfully!`);
+        } else {
+          setActionError('No line items could be parsed from the PDF.');
+        }
+      } catch (err) {
+        setActionError(err.message || 'PDF parse failed');
+      } finally {
+        setParsingPdf(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const createInquiryMutation = useMutation({
     mutationFn: (payload) => api('/inquiries', { method: 'POST', body: JSON.stringify(payload) }),
@@ -284,12 +363,25 @@ setActionMessage(
     []
   );
 
+  const updateCategoryMutation = useMutation({
+    mutationFn: ({ id, category }) => api(`/quotations/${id}`, { method: 'PATCH', body: JSON.stringify({ category }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['quotations'] });
+      setActionMessage('Category updated successfully');
+      setActionError('');
+    },
+    onError: (err) => {
+      setActionError(err.message || 'Failed to update category');
+    },
+  });
+
   const quotationColumns = useMemo(
     () => [
       { key: 'quotation_number', label: 'Quotation No' },
       { key: 'customer_name', label: 'Customer' },
       { key: 'total_amount', label: 'Amount' },
       { key: 'status', label: 'Status' },
+      { key: 'category', label: 'Category' },
       { key: 'assigned_name', label: 'Assigned To' },
       { key: 'actions', label: 'Actions' },
     ],
@@ -381,6 +473,17 @@ setActionMessage(
 
   const quotationRows = quotations.map((q) => ({
     ...q,
+    category: (
+      <select
+        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none"
+        value={q.category || 'DEWAS'}
+        onChange={(e) => updateCategoryMutation.mutate({ id: q.id, category: e.target.value })}
+      >
+        <option value="DIGISET">DIGISET</option>
+        <option value="DEWAS">DEWAS</option>
+        <option value="WADI">WADI</option>
+      </select>
+    ),
     actions: (
       <div className="flex flex-wrap gap-1">
         {canCreateQuotation ? (
@@ -408,7 +511,7 @@ setActionMessage(
           className="rounded border border-indigo-500 px-2 py-1 text-xs text-indigo-600"
           onClick={() => {
             setSelectedQuotationId(q.id);
-            setSelectedTemplate('baerlocher');
+            setSelectedTemplate('dewas');
             setShowTemplateModal(true);
           }}
         >
@@ -629,646 +732,588 @@ value={p.product_name}
 
 {canCreateQuotation ? (
 <form
+  onSubmit={(e) => {
+    e.preventDefault();
+    const selectedInquiryData = inquiries.find(
+      (i) => String(i.id) === String(quotationForm.inquiry_id)
+    );
 
-onSubmit={(e)=>{
-
-e.preventDefault();
-
-const selectedInquiryData=
-
-inquiries.find(
-
-i=>
-
-String(i.id)
-
-===
-
-String(
-
-quotationForm.inquiry_id
-
-)
-
-);
-
-createQuotationMutation.mutate({
-
-customer_name:
-
-selectedInquiryData?.customer_name
-||
-
-quotationForm.customer_name,
-
-company_name:
-
-selectedInquiryData?.company
-||
-
-quotationForm.company_name,
-
-status: quotationForm.status,
-attention_person:
-quotationForm.attention_person,
-
-subject:
-quotationForm.subject,
-
-application:
-quotationForm.application,
-
-flow:
-quotationForm.flow,
-
-head:
-quotationForm.head,
-items: quotationForm.items.map(item => ({
-  description: item.description || '',
-  model: item.model || '',
-  motor_hp: item.hp || '',
-  head: item.head || '',
-  flow_rate: item.flow || '',
-  size: item.size || '',
-  qty: item.qty || 0,
-  rate: item.rate || 0,
-  discount_pct: item.discount_pct || 0,
-  gst_pct: item.gst_pct || 18
-}))
-
-
-});
-
-}}
-
-className="card space-y-3"
-
+    createQuotationMutation.mutate({
+      customer_name: selectedInquiryData?.customer_name || quotationForm.customer_name,
+      company_name: selectedInquiryData?.company || quotationForm.company_name,
+      status: quotationForm.status,
+      category: quotationForm.category || 'DEWAS',
+      attention_person: quotationForm.attention_person,
+      subject: quotationForm.subject,
+      application: quotationForm.application,
+      flow: quotationForm.flow,
+      head: quotationForm.head,
+      items: quotationForm.items.map((item) => ({
+        description: item.description || item.model || '',
+        model: item.model || '',
+        motor_hp: item.hp || '',
+        head: item.head || '',
+        flow_rate: item.flow || '',
+        size: item.size || '',
+        solid_size: item.solid_size || '',
+        qty: Number(item.qty || 0),
+        rate: Number(item.rate || 0),
+        discount_pct: Number(item.discount_pct || 0),
+        gst_pct: Number(item.gst_pct || 18),
+        custom_fields: {
+          ...(item.custom_fields || {}),
+          model: item.model || '',
+          motor_hp: item.hp || '',
+          head: item.head || '',
+          flow_rate: item.flow || '',
+          size: item.size || '',
+          solid_size: item.solid_size || '',
+        },
+      })),
+    });
+  }}
+  className="card space-y-4"
 >
-
-<div className="grid gap-3 md:grid-cols-4">
-
-<div>
-
-<label className="text-sm font-medium">
-
-Select Customer Inquiry
-
-</label>
-
-<select
-
-className="w-full rounded border p-2"
-
-value={
-quotationForm.inquiry_id || ''
-}
-
-onChange={(e) => {
-
-const inquiry = inquiries.find(
-  i => String(i.id) === e.target.value
-);
-
-setQuotationForm({
-  ...quotationForm,
-  inquiry_id: e.target.value,
-  customer_name: inquiry?.customer_name || '',
-  company_name: inquiry?.company || '',
-  items: [{
-    ...quotationForm.items[0],
-    description: inquiry?.product_interested || ''
-  }]
-});
-
-}}
-
->
-
-<option value="">
-
-Select Customer
-
-</option>
-
-{
-
-inquiries.map(i=>(
-
-<option
-
-key={i.id}
-
-value={i.id}
-
->
-
-{i.customer_name}
-
--
-
-{i.company}
-
-</option>
-
-))
-
-}
-
-</select>
-
-</div>
-
-<div>
-
-<label className="text-sm font-medium">
-
-Customer Name
-
-</label>
-
-<input
-className="w-full rounded border p-2"
-value={quotationForm.customer_name || ''}
-onChange={(e) =>
-  setQuotationForm({
-    ...quotationForm,
-    customer_name: e.target.value
-  })
-}
-/>
-</div>
-
-<div>
-
-<label className="text-sm font-medium">
-
-Company Name
-
-</label>
-
-<input
-className="w-full rounded border p-2"
-value={quotationForm.company_name || ''}
-onChange={(e) =>
-  setQuotationForm({
-    ...quotationForm,
-    company_name: e.target.value
-  })
-}
-/>
-
-</div>
-<div>
-  <label className="text-sm font-medium">
-    Attention Person
-  </label>
-
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.attention_person}
-    onChange={(e) =>
-      setQuotationForm({
-        ...quotationForm,
-        attention_person: e.target.value
-      })
-    }
-  />
-</div>
-
-<div>
-  <label className="text-sm font-medium">
-    Subject
-  </label>
-
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.subject}
-    onChange={(e) =>
-      setQuotationForm({
-        ...quotationForm,
-        subject: e.target.value
-      })
-    }
-  />
-</div>
-<div>
-  <label className="text-sm font-medium">
-    Application
-  </label>
-
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.application}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        application:e.target.value
-      })
-    }
-  />
-</div>
-
-<div>
-  <label className="text-sm font-medium">
-    Flow (m3/hr)
-  </label>
-
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.flow}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        flow:e.target.value
-      })
-    }
-  />
-</div>
-
-<div>
-  <label className="text-sm font-medium">
-    Head (m)
-  </label>
-
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.head}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        head:e.target.value
-      })
-    }
-  />
-</div>
-<div>
-
-<label className="text-sm font-medium">
-
-Status
-
-</label>
-
-<select
-
-className="w-full rounded border p-2"
-
-value={
-quotationForm.status
-}
-
-onChange={(e) => {
-
-const inquiry = inquiries.find(
-  i => String(i.id) === e.target.value
-);
-
-setQuotationForm({
-  ...quotationForm,
-  inquiry_id: e.target.value,
-  customer_name: inquiry?.customer_name || '',
-  company_name: inquiry?.company || ''
-});
-
-}}
-
->
-
-<option value="draft">
-
-draft
-
-</option>
-
-<option value="sent">
-
-sent
-
-</option>
-
-<option value="approved">
-
-approved
-
-</option>
-
-</select>
-
-</div>
-
-</div>
-
-<div className="rounded border p-3">
-
-<p className="mb-2 text-sm font-medium">
-
-Line Item Details
-
-</p>
-
-<div className="grid gap-2 md:grid-cols-5">
-<div>
-  <label className="text-xs">Pump Model</label>
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.items[0].model || ''}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        items:[{
-          ...quotationForm.items[0],
-          model:e.target.value
-        }]
-      })
-    }
-  />
-</div>
-
-<div>
-  <label className="text-xs">Motor HP</label>
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.items[0].hp || ''}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        items:[{
-          ...quotationForm.items[0],
-          hp:e.target.value
-        }]
-      })
-    }
-  />
-</div>
-<div>
-  <label className="text-xs">
-    Pump Head
-  </label>
-
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.items[0].head || ''}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        items:[{
-          ...quotationForm.items[0],
-          head:e.target.value
-        }]
-      })
-    }
-  />
-</div>
-<div>
-  <label className="text-xs">Flow Rate</label>
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.items[0].flow || ''}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        items:[{
-          ...quotationForm.items[0],
-          flow:e.target.value
-        }]
-      })
-    }
-  />
-</div>
-
-<div>
-  <label className="text-xs">SUC x DEL</label>
-  <input
-    className="w-full rounded border p-2"
-    value={quotationForm.items[0].size || ''}
-    onChange={(e)=>
-      setQuotationForm({
-        ...quotationForm,
-        items:[{
-          ...quotationForm.items[0],
-          size:e.target.value
-        }]
-      })
-    }
-  />
-</div>
-<div>
-
-<label className="text-xs">
-
-Product
-
-</label>
-
-<input
-className="w-full rounded border p-2"
-value={quotationForm.items[0].description || ''}
-onChange={(e)=>
-setQuotationForm({
-  ...quotationForm,
-  items:[{
-    ...quotationForm.items[0],
-    description:e.target.value
-  }]
-})
-}
-/>
-</div>
-
-<div>
-
-<label className="text-xs">
-
-Qty
-
-</label>
-
-<input
-
-type="number"
-
-className="w-full rounded border p-2"
-
-value={
-quotationForm.items[0].qty
-}
-
-onChange={(e)=>
-
-setQuotationForm({
-
-...quotationForm,
-
-items:[{
-
-...quotationForm.items[0],
-
-qty:Number(e.target.value)
-
-}]
-
-})
-
-}
-
-/>
-
-</div>
-
-<div>
-
-<label className="text-xs">
-
-Rate
-
-</label>
-
-<input
-
-type="number"
-
-className="w-full rounded border p-2"
-
-value={
-quotationForm.items[0].rate
-}
-
-onChange={(e)=>
-
-setQuotationForm({
-
-...quotationForm,
-
-items:[{
-
-...quotationForm.items[0],
-
-rate:
-
-Number(
-
-e.target.value
-
-)
-
-}]
-
-})
-
-}
-
-/>
-
-</div>
-
-<div>
-
-<label className="text-xs">
-
-Discount %
-
-</label>
-
-<input
-
-type="number"
-
-className="w-full rounded border p-2"
-
-value={
-quotationForm.items[0].discount_pct
-}
-
-onChange={(e)=>
-
-setQuotationForm({
-
-...quotationForm,
-
-items:[{
-
-...quotationForm.items[0],
-
-discount_pct:
-
-Number(
-
-e.target.value
-
-)
-
-}]
-
-})
-
-}
-
-/>
-
-</div>
-
-<div>
-
-<label className="text-xs">
-
-GST %
-
-</label>
-
-<input
-
-type="number"
-
-className="w-full rounded border p-2"
-
-value={
-quotationForm.items[0].gst_pct
-}
-
-onChange={(e)=>
-
-setQuotationForm({
-
-...quotationForm,
-
-items:[{
-
-...quotationForm.items[0],
-
-gst_pct:
-
-Number(
-
-e.target.value
-
-)
-
-}]
-
-})
-
-}
-
-/>
-
-</div>
-
-</div>
-
-</div>
-
-<button
-
-type="submit"
-
-className="rounded bg-brand-600 px-3 py-2 text-white"
-
->
-
-Create Quotation
-
-</button>
-
+  <div className="grid gap-3 md:grid-cols-4">
+    <div>
+      <label className="text-sm font-medium">Select Customer Inquiry</label>
+      <select
+        className="w-full rounded border p-2"
+        value={quotationForm.inquiry_id || ''}
+        onChange={(e) => {
+          const inquiry = inquiries.find((i) => String(i.id) === e.target.value);
+          setQuotationForm({
+            ...quotationForm,
+            inquiry_id: e.target.value,
+            customer_name: inquiry?.customer_name || '',
+            company_name: inquiry?.company || '',
+            items: [
+              {
+                ...quotationForm.items[0],
+                description: inquiry?.product_interested || '',
+              },
+            ],
+          });
+        }}
+      >
+        <option value="">Select Customer</option>
+        {inquiries.map((i) => (
+          <option key={i.id} value={i.id}>
+            {i.customer_name} - {i.company}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Customer Name</label>
+      <input
+        className="w-full rounded border p-2"
+        value={quotationForm.customer_name || ''}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            customer_name: e.target.value,
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Company Name</label>
+      <input
+        className="w-full rounded border p-2"
+        value={quotationForm.company_name || ''}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            company_name: e.target.value,
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Attention Person</label>
+      <input
+        className="w-full rounded border p-2"
+        value={quotationForm.attention_person}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            attention_person: e.target.value,
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Subject</label>
+      <input
+        className="w-full rounded border p-2"
+        value={quotationForm.subject}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            subject: e.target.value,
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Application</label>
+      <input
+        className="w-full rounded border p-2"
+        value={quotationForm.application}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            application: e.target.value,
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Flow (m3/hr)</label>
+      <input
+        className="w-full rounded border p-2"
+        value={quotationForm.flow}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            flow: e.target.value,
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Head (m)</label>
+      <input
+        className="w-full rounded border p-2"
+        value={quotationForm.head}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            head: e.target.value,
+          })
+        }
+      />
+    </div>
+
+    <div>
+      <label className="text-sm font-medium">Status</label>
+      <select
+        className="w-full rounded border p-2"
+        value={quotationForm.status}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            status: e.target.value,
+          })
+        }
+      >
+        <option value="draft">draft</option>
+        <option value="sent">sent</option>
+        <option value="approved">approved</option>
+        <option value="rejected">rejected</option>
+      </select>
+    </div>
+
+    <div>
+      <label className="text-sm font-semibold text-brand-700">Category</label>
+      <select
+        className="w-full rounded border border-brand-300 bg-brand-50 p-2 font-bold text-brand-800"
+        value={quotationForm.category || 'DEWAS'}
+        onChange={(e) =>
+          setQuotationForm({
+            ...quotationForm,
+            category: e.target.value,
+          })
+        }
+      >
+        <option value="DIGISET">DIGISET</option>
+        <option value="DEWAS">DEWAS</option>
+        <option value="WADI">WADI</option>
+      </select>
+    </div>
+  </div>
+
+  {/* Line Item Details Section */}
+  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+      <div>
+        <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
+          <span>Line Item Details</span>
+          <span className="rounded bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700">
+            {quotationForm.category || 'DEWAS'} Category
+          </span>
+        </h4>
+        <p className="text-xs text-slate-500">
+          Configure line items and fields for {quotationForm.category || 'DEWAS'}. You can add, edit, or delete dynamic fields.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors">
+          <span>📄</span>
+          <span>{parsingPdf ? 'Parsing PDF...' : 'Upload PDF to Auto-Fill'}</span>
+          <input
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            disabled={parsingPdf}
+            onChange={handlePdfUpload}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={addItem}
+          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 shadow-sm"
+        >
+          <span>+</span>
+          <span>Add Line Item</span>
+        </button>
+      </div>
+    </div>
+
+    {/* Line Item Cards */}
+    <div className="space-y-4">
+      {quotationForm.items.map((item, idx) => {
+        const lineBase = Number(item.qty || 0) * Number(item.rate || 0);
+        const lineDiscount = (lineBase * Number(item.discount_pct || 0)) / 100;
+        const lineNet = lineBase - lineDiscount;
+        const lineGst = (lineNet * Number(item.gst_pct || 0)) / 100;
+        const lineTotal = lineNet + lineGst;
+
+        return (
+          <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b pb-2">
+              <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">
+                Line Item #{idx + 1}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => addCustomFieldToItem(idx)}
+                  className="rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                >
+                  + Add Custom Field
+                </button>
+
+                {quotationForm.items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(idx)}
+                    className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                  >
+                    Delete Item
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Catalog Model Selector */}
+            {products.length > 0 && (
+              <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border border-slate-200">
+                <span className="text-xs font-semibold text-slate-700">Quick-Pick Model from Catalog:</span>
+                <select
+                  className="flex-1 rounded border border-slate-300 bg-white p-1 text-xs font-medium text-slate-800"
+                  onChange={(e) => {
+                    if (e.target.value) handleSelectProduct(idx, e.target.value);
+                  }}
+                  defaultValue=""
+                >
+                  <option value="">-- Choose saved pump model to auto-fill specs --</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.product_name} {p.hp ? `(${p.hp})` : ''} {p.pipe_size ? `[${p.pipe_size}]` : ''} {p.head ? `[Head: ${p.head}]` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Category-Specific Fields Grid */}
+            <div className="grid gap-2 md:grid-cols-6">
+              {quotationForm.category === 'DEWAS' && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Pump Model</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs font-bold text-slate-800"
+                      placeholder="e.g. KSIL 1-13 / ETERNA 750"
+                      value={item.model || ''}
+                      onChange={(e) => updateItem(idx, 'model', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Motor HP / kW</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 1.0 HP"
+                      value={item.hp || ''}
+                      onChange={(e) => updateItem(idx, 'hp', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 10 - 78 m"
+                      value={item.head || ''}
+                      onChange={(e) => updateItem(idx, 'head', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Flow Rate</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 120-312 LPM"
+                      value={item.flow || ''}
+                      onChange={(e) => updateItem(idx, 'flow', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">SUC x DEL Size</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 32 x 32 mm"
+                      value={item.size || ''}
+                      onChange={(e) => updateItem(idx, 'size', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Max Solid Size</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 18 mm / 22 mm"
+                      value={item.solid_size || ''}
+                      onChange={(e) => updateItem(idx, 'solid_size', e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              {quotationForm.category === 'WADI' && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Pump Model</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. DB 100/26"
+                      value={item.model || ''}
+                      onChange={(e) => updateItem(idx, 'model', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Delivery Size</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 100 mm"
+                      value={item.size || ''}
+                      onChange={(e) => updateItem(idx, 'size', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Pump Head</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 35 m"
+                      value={item.head || ''}
+                      onChange={(e) => updateItem(idx, 'head', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Discharge / Flow</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 40 lps"
+                      value={item.flow || ''}
+                      onChange={(e) => updateItem(idx, 'flow', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Material (MOC)</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. CI / Bronze"
+                      value={item.hp || ''}
+                      onChange={(e) => updateItem(idx, 'hp', e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              {quotationForm.category === 'DIGISET' && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Engine/Set Model</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. Greaves G-125"
+                      value={item.model || ''}
+                      onChange={(e) => updateItem(idx, 'model', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">KVA Rating</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 62.5 KVA"
+                      value={item.hp || ''}
+                      onChange={(e) => updateItem(idx, 'hp', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Phase / Voltage</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 3 Phase 415V"
+                      value={item.size || ''}
+                      onChange={(e) => updateItem(idx, 'size', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Fuel / Cooling</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. Diesel / Water Cooled"
+                      value={item.head || ''}
+                      onChange={(e) => updateItem(idx, 'head', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Frequency</label>
+                    <input
+                      className="w-full rounded border p-2 text-xs"
+                      placeholder="e.g. 50 Hz"
+                      value={item.flow || ''}
+                      onChange={(e) => updateItem(idx, 'flow', e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Standard Commercial Fields */}
+            <div className="grid gap-2 md:grid-cols-5 bg-slate-50 p-2.5 rounded border border-slate-100">
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-slate-700">Product / Item Description *</label>
+                <input
+                  className="w-full rounded border p-2 text-xs font-medium"
+                  placeholder="Enter detailed description"
+                  value={item.description || ''}
+                  onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Quantity</label>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full rounded border p-2 text-xs"
+                  value={item.qty}
+                  onChange={(e) => updateItem(idx, 'qty', Number(e.target.value))}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Unit Rate (Rs.)</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full rounded border p-2 text-xs"
+                  value={item.rate}
+                  onChange={(e) => updateItem(idx, 'rate', Number(e.target.value))}
+                />
+              </div>
+
+              <div className="flex gap-1">
+                <div className="w-1/2">
+                  <label className="text-xs font-semibold text-slate-700">Disc %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    className="w-full rounded border p-2 text-xs"
+                    value={item.discount_pct}
+                    onChange={(e) => updateItem(idx, 'discount_pct', Number(e.target.value))}
+                  />
+                </div>
+                <div className="w-1/2">
+                  <label className="text-xs font-semibold text-slate-700">GST %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full rounded border p-2 text-xs"
+                    value={item.gst_pct}
+                    onChange={(e) => updateItem(idx, 'gst_pct', Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Dynamic Custom Fields Rendering */}
+            {item.custom_fields && Object.keys(item.custom_fields).length > 0 && (
+              <div className="rounded border border-amber-200 bg-amber-50/50 p-2.5 space-y-2">
+                <p className="text-xs font-bold text-amber-800">Dynamic Custom Fields ({quotationForm.category}):</p>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {Object.entries(item.custom_fields).map(([k, val]) => (
+                    <div key={k} className="flex items-center gap-1 bg-white p-1.5 rounded border border-amber-200 shadow-xs">
+                      <span className="text-xs font-medium text-amber-900 truncate max-w-[100px]">{k}:</span>
+                      <input
+                        className="w-full rounded border p-1 text-xs"
+                        value={val || ''}
+                        placeholder={`Value for ${k}`}
+                        onChange={(e) => updateItemCustomField(idx, k, e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => deleteCustomFieldFromItem(idx, k)}
+                        className="text-rose-600 hover:text-rose-800 text-xs px-1 font-bold"
+                        title="Delete custom field"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end text-xs font-bold text-slate-700 pt-1">
+              Line Total: Rs. {lineTotal.toFixed(2)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Section Summary */}
+    <div className="flex items-center justify-between pt-2">
+      <button
+        type="button"
+        onClick={addItem}
+        className="rounded-lg border border-dashed border-emerald-400 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+      >
+        + Add Another Item
+      </button>
+
+      <div className="text-right">
+        <p className="text-xs text-slate-500 font-medium">Total Items: {quotationForm.items.length}</p>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" className="rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-md">
+    Create Quotation
+  </button>
 </form>
 ) : null}
 
@@ -1509,6 +1554,7 @@ Cancel
         value={selectedTemplate}
         onChange={(e) => setSelectedTemplate(e.target.value)}
       >
+        <option value="dewas">Dewas (Kirloskar Pumps / Commercial Offer)</option>
         <option value="baerlocher">Baerlocher (Techno-Commercial Offer)</option>
         <option value="choithram">Choithram School (Submersible Pump)</option>
         <option value="greaves">Greaves (DG Set / CRM 1-Page)</option>
