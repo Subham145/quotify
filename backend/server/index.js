@@ -46,10 +46,11 @@ if (process.env.MONGODB_URI) {
 }
 
 const app = express();
-const PORT = Number(process.env.API_PORT || 4000);
+const PORT = Number(process.env.API_PORT || process.env.PORT || 4000);
 
 app.use(cors());
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 app.use('/api/users', requireAuth, (req, res, next) => {
   if (req.path === '/assignable') return next();
@@ -784,20 +785,26 @@ app.get('/api/products/export/csv', requireAuth, (_req, res) => {
 
 app.post('/api/products/parse-catalog-pdf', requireAuth, async (req, res) => {
   try {
-    const { file_base64 } = req.body || {};
-    if (!file_base64) {
-      return res.status(400).json({ message: 'file_base64 is required' });
-    }
-    const base64Data = file_base64.replace(/^data:application\/pdf;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    const parser = new PDFParse({ data: buffer });
-    const pdfData = await parser.getText();
-    const text = pdfData.text || '';
-    await parser.destroy();
+    const { file_base64, text: incomingText, category } = req.body || {};
+    let text = incomingText || '';
 
-    const parsedProducts = parseCatalogText(text);
+    if (!text && file_base64) {
+      const base64Data = file_base64.replace(/^data:application\/pdf;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      const parser = new PDFParse({ data: buffer });
+      const pdfData = await parser.getText();
+      text = pdfData.text || '';
+      await parser.destroy();
+    }
+
+    if (!text) {
+      return res.status(400).json({ message: 'No text or PDF provided' });
+    }
+
+    const parsedProducts = parseCatalogText(text, category || 'DEWAS');
     res.json({
       ok: true,
+      category: category || 'DEWAS',
       count: parsedProducts.length,
       products: parsedProducts,
       preview_text: text.slice(0, 400)
@@ -817,6 +824,29 @@ app.post('/api/products/bulk-create', requireAuth, (req, res) => {
   const insertGroup = db.prepare('INSERT OR IGNORE INTO product_groups (group_name) VALUES (?)');
   const getGroup = db.prepare('SELECT id FROM product_groups WHERE group_name = ?');
 
+  const findExisting = db.prepare(`
+    SELECT id FROM products 
+    WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?))
+      AND (category = ? OR (? IS NULL AND category IS NULL))
+    LIMIT 1
+  `);
+
+  const updateProductSpecs = db.prepare(`
+    UPDATE products SET
+      code = CASE WHEN ? != '' THEN ? ELSE code END,
+      group_id = COALESCE(?, group_id),
+      subgroup_id = COALESCE(?, subgroup_id),
+      hp = CASE WHEN ? != '' THEN ? ELSE hp END,
+      kw = CASE WHEN ? != '' THEN ? ELSE kw END,
+      head = CASE WHEN ? != '' THEN ? ELSE head END,
+      flow_rate = CASE WHEN ? != '' THEN ? ELSE flow_rate END,
+      pipe_size = CASE WHEN ? != '' THEN ? ELSE pipe_size END,
+      solid_size = CASE WHEN ? != '' THEN ? ELSE solid_size END,
+      stages = CASE WHEN ? != '' THEN ? ELSE stages END,
+      specs = CASE WHEN ? != '' THEN ? ELSE specs END
+    WHERE id = ?
+  `);
+
   const insertProduct = db.prepare(`
     INSERT INTO products (
       product_name, code, group_id, subgroup_id, category, hsn_code, price, gst_rate, unit, stock_quantity,
@@ -828,8 +858,10 @@ app.post('/api/products/bulk-create', requireAuth, (req, res) => {
   `);
 
   let insertedCount = 0;
+  let updatedCount = 0;
   const insertMany = db.transaction((list) => {
     for (const p of list) {
+      if (!p || !p.product_name) continue;
       let groupId = p.group_id ? Number(p.group_id) : null;
       if (!groupId && p.group_name) {
         insertGroup.run(p.group_name.trim());
@@ -837,36 +869,108 @@ app.post('/api/products/bulk-create', requireAuth, (req, res) => {
         if (grp) groupId = grp.id;
       }
 
-      insertProduct.run(
-        p.product_name,
-        p.code || p.product_name || '',
-        groupId,
-        p.subgroup_id || null,
-        p.category || 'DEWAS',
-        p.hsn_code || '84137010',
-        Number(p.price || 0),
-        Number(p.gst_rate || 18),
-        p.unit || 'piece',
-        Number(p.stock_quantity || 0),
-        p.hp || '',
-        p.kw || '',
-        p.head || '',
-        p.flow_rate || '',
-        p.pipe_size || '',
-        p.solid_size || '',
-        p.stages || '',
-        p.specs ? (typeof p.specs === 'object' ? JSON.stringify(p.specs) : String(p.specs)) : ''
-      );
-      insertedCount++;
+      const pCategory = p.category || 'DEWAS';
+      const existing = findExisting.get(p.product_name.trim(), pCategory, pCategory);
+
+      const codeVal = p.code || p.product_name || '';
+      const specsVal = p.specs ? (typeof p.specs === 'object' ? JSON.stringify(p.specs) : String(p.specs)) : '';
+      const hpVal = p.hp || '';
+      const kwVal = p.kw || '';
+      const headVal = p.head || '';
+      const flowVal = p.flow_rate || '';
+      const pipeVal = p.pipe_size || '';
+      const solidVal = p.solid_size || '';
+      const stagesVal = p.stages || '';
+
+      if (existing) {
+        // Update specs on existing product, do not duplicate!
+        updateProductSpecs.run(
+          codeVal, codeVal,
+          groupId,
+          p.subgroup_id || null,
+          hpVal, hpVal,
+          kwVal, kwVal,
+          headVal, headVal,
+          flowVal, flowVal,
+          pipeVal, pipeVal,
+          solidVal, solidVal,
+          stagesVal, stagesVal,
+          specsVal, specsVal,
+          existing.id
+        );
+        updatedCount++;
+      } else {
+        insertProduct.run(
+          p.product_name.trim(),
+          codeVal,
+          groupId,
+          p.subgroup_id || null,
+          pCategory,
+          p.hsn_code || '84137010',
+          Number(p.price || 0),
+          Number(p.gst_rate || 18),
+          p.unit || 'piece',
+          Number(p.stock_quantity || 0),
+          hpVal,
+          kwVal,
+          headVal,
+          flowVal,
+          pipeVal,
+          solidVal,
+          stagesVal,
+          specsVal
+        );
+        insertedCount++;
+      }
     }
   });
 
   try {
     insertMany(products);
-    res.json({ ok: true, count: insertedCount });
+    res.json({ ok: true, count: insertedCount, updated: updatedCount, totalProcessed: products.length });
   } catch (err) {
     console.error('Bulk insert error:', err);
     res.status(500).json({ message: 'Failed to import products: ' + err.message });
+  }
+});
+
+app.get('/api/products/stats', requireAuth, (_req, res) => {
+  try {
+    const totalRow = db.prepare('SELECT COUNT(*) as total FROM products').get();
+    const catRows = db.prepare('SELECT COALESCE(category, "Uncategorized") as category, COUNT(*) as count FROM products GROUP BY category').all();
+    const dupRows = db.prepare(`
+      SELECT LOWER(TRIM(product_name)) as name, COALESCE(category, '') as category, COUNT(*) as count 
+      FROM products 
+      GROUP BY LOWER(TRIM(product_name)), category 
+      HAVING count > 1
+    `).all();
+
+    res.json({
+      total: totalRow?.total || 0,
+      categories: catRows,
+      duplicateGroupsCount: dupRows.length,
+      duplicateRows: dupRows,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/products/remove-duplicates', requireAuth, (_req, res) => {
+  try {
+    // Delete duplicate rows keeping the highest id (most recent) for each product_name and category
+    const result = db.prepare(`
+      DELETE FROM products
+      WHERE id NOT IN (
+        SELECT MAX(id)
+        FROM products
+        GROUP BY LOWER(TRIM(product_name)), COALESCE(category, '')
+      )
+    `).run();
+
+    res.json({ ok: true, removedCount: result.changes });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -1301,7 +1405,7 @@ app.get('/api/quotations/:id', requireAuth, (req, res) => {
 
 app.post('/api/quotations/parse-pdf', requireAuth, async (req, res) => {
   try {
-    const { file_base64 } = req.body || {};
+    const { file_base64, category } = req.body || {};
     if (!file_base64) {
       return res.status(400).json({ message: 'file_base64 is required' });
     }
@@ -1316,6 +1420,7 @@ app.post('/api/quotations/parse-pdf', requireAuth, async (req, res) => {
 
     const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const extractedItems = [];
+    const targetCat = (category || 'DEWAS').toUpperCase();
 
     for (let i = 0; i < rawLines.length; i++) {
       const line = rawLines[i];
@@ -1323,15 +1428,16 @@ app.post('/api/quotations/parse-pdf', requireAuth, async (req, res) => {
       const qtyMatch = line.match(/(?:qty|quantity|nos|pcs)[:\s]*(\d+)/i) || line.match(/\b(\d+)\s*(?:nos|pcs|set|unit|numbers|items?)/i);
       const rateMatch = line.match(/(?:rate|price|unit price|rs\.?|inr)[:\s]*([\d,]+(?:\.\d+)?)/i) || line.match(/₹\s*([\d,]+(?:\.\d+)?)/);
       const hpMatch = line.match(/(\d+(?:\.\d+)?)\s*(?:hp|kw)/i);
+      const kvaMatch = line.match(/(\d+(?:\.\d+)?)\s*(?:kva|kv)/i);
       const headMatch = line.match(/(?:head[:\s]*)?(\d+(?:\.\d+)?)\s*(?:m|mtr|meters)/i);
       const flowMatch = line.match(/(?:flow|discharge)[:\s]*(\d+(?:\.\d+)?)\s*(?:m3\/hr|lps|lpm)?/i);
 
-      const hasProductKeywords = /(pump|motor|engine|set|digiset|dewas|wadi|kirloskar|greaves|model|hp|head|flow|panel|valve|cable|impeller)/i.test(line);
+      const hasProductKeywords = /(pump|motor|engine|set|digiset|dewas|wadi|kirloskar|greaves|model|hp|kva|head|flow|panel|valve|cable|impeller|pipe)/i.test(line);
 
       if (hasProductKeywords || qtyMatch || rateMatch) {
         const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
         const rate = rateMatch ? parseFloat(rateMatch[1].replace(/,/g, '')) : 0;
-        const hp = hpMatch ? hpMatch[1] + ' HP' : '';
+        const hp = hpMatch ? hpMatch[1] + ' HP' : (targetCat === 'DIGISET' && kvaMatch ? kvaMatch[1] + ' KVA' : '');
         const head = headMatch ? headMatch[1] + ' m' : '';
         const flow = flowMatch ? flowMatch[1] + ' m3/hr' : '';
 
@@ -1346,11 +1452,15 @@ app.post('/api/quotations/parse-pdf', requireAuth, async (req, res) => {
             description: desc,
             model: line.match(/model[:\s]*([A-Z0-9\-\/]+)/i)?.[1] || '',
             motor_hp: hp,
+            hp: hp,
             head: head,
             flow_rate: flow,
+            flow: flow,
             size: line.match(/size[:\s]*([A-Z0-9\-\/x\s]+)/i)?.[1] || '',
+            solid_size: line.match(/solid[:\s]*([A-Z0-9\-\/x\s]+)/i)?.[1] || '',
             qty: qty > 0 ? qty : 1,
             rate: rate >= 0 ? rate : 0,
+            discounted_price: rate >= 0 ? rate : 0,
             discount_pct: 0,
             gst_pct: 18,
             custom_fields: {}
@@ -1366,11 +1476,15 @@ app.post('/api/quotations/parse-pdf', requireAuth, async (req, res) => {
           description: line,
           model: '',
           motor_hp: '',
+          hp: '',
           head: '',
           flow_rate: '',
+          flow: '',
           size: '',
+          solid_size: '',
           qty: 1,
           rate: 0,
+          discounted_price: 0,
           discount_pct: 0,
           gst_pct: 18,
           custom_fields: {}
@@ -1380,6 +1494,7 @@ app.post('/api/quotations/parse-pdf', requireAuth, async (req, res) => {
 
     res.json({
       ok: true,
+      category: targetCat,
       text_preview: text.slice(0, 500),
       items: extractedItems
     });
@@ -1433,8 +1548,16 @@ app.post('/api/quotations', requireAuth, (req, res) => {
           subject,
           application,
           flow,
-          head
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          head,
+          sales_person_name,
+          sales_person_phone,
+          delivery_terms,
+          payment_terms,
+          freight_terms,
+          availability_terms,
+          taxes_terms,
+          validity_terms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         quotationNumber,
@@ -1454,7 +1577,15 @@ app.post('/api/quotations', requireAuth, (req, res) => {
         p.subject || '',
         p.application || '',
         p.flow || '',
-        p.head || ''
+        p.head || '',
+        p.sales_person_name !== undefined && p.sales_person_name !== null ? p.sales_person_name : '',
+        p.sales_person_phone !== undefined && p.sales_person_phone !== null ? p.sales_person_phone : '',
+        p.delivery_terms || 'Ex Godown',
+        p.payment_terms || '100% advance',
+        p.freight_terms || 'To Pay',
+        p.availability_terms || 'Ex-Stock / 2-3 Weeks',
+        p.taxes_terms || 'GST 18% Extra',
+        p.validity_terms || '30 Days'
       );
 
     const insertItem = db.prepare(
@@ -1523,6 +1654,20 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           status = COALESCE(?, status),
           category = COALESCE(?, category),
           notes = COALESCE(?, notes),
+          attention_person = COALESCE(?, attention_person),
+          subject = COALESCE(?, subject),
+          application = COALESCE(?, application),
+          flow = COALESCE(?, flow),
+          head = COALESCE(?, head),
+          template_type = COALESCE(?, template_type),
+          sales_person_name = COALESCE(?, sales_person_name),
+          sales_person_phone = COALESCE(?, sales_person_phone),
+          delivery_terms = COALESCE(?, delivery_terms),
+          payment_terms = COALESCE(?, payment_terms),
+          freight_terms = COALESCE(?, freight_terms),
+          availability_terms = COALESCE(?, availability_terms),
+          taxes_terms = COALESCE(?, taxes_terms),
+          validity_terms = COALESCE(?, validity_terms),
           subtotal = ?,
           total_discount = ?,
           total_gst = ?,
@@ -1536,6 +1681,20 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
         p.status,
         p.category,
         p.notes,
+        p.attention_person,
+        p.subject,
+        p.application,
+        p.flow,
+        p.head,
+        p.template_type,
+        p.sales_person_name,
+        p.sales_person_phone,
+        p.delivery_terms,
+        p.payment_terms,
+        p.freight_terms,
+        p.availability_terms,
+        p.taxes_terms,
+        p.validity_terms,
         totals.subtotal,
         totals.totalDiscount,
         totals.totalGst,
@@ -1595,9 +1754,46 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           assigned_to = COALESCE(?, assigned_to),
           status = COALESCE(?, status),
           category = COALESCE(?, category),
-          notes = COALESCE(?, notes)
+          notes = COALESCE(?, notes),
+          attention_person = COALESCE(?, attention_person),
+          subject = COALESCE(?, subject),
+          application = COALESCE(?, application),
+          flow = COALESCE(?, flow),
+          head = COALESCE(?, head),
+          template_type = COALESCE(?, template_type),
+          sales_person_name = COALESCE(?, sales_person_name),
+          sales_person_phone = COALESCE(?, sales_person_phone),
+          delivery_terms = COALESCE(?, delivery_terms),
+          payment_terms = COALESCE(?, payment_terms),
+          freight_terms = COALESCE(?, freight_terms),
+          availability_terms = COALESCE(?, availability_terms),
+          taxes_terms = COALESCE(?, taxes_terms),
+          validity_terms = COALESCE(?, validity_terms)
         WHERE id = ?`
-      ).run(p.customer_id, p.customer_name, p.company_name, p.assigned_to, p.status, p.category, p.notes, id);
+      ).run(
+        p.customer_id,
+        p.customer_name,
+        p.company_name,
+        p.assigned_to,
+        p.status,
+        p.category,
+        p.notes,
+        p.attention_person,
+        p.subject,
+        p.application,
+        p.flow,
+        p.head,
+        p.template_type,
+        p.sales_person_name,
+        p.sales_person_phone,
+        p.delivery_terms,
+        p.payment_terms,
+        p.freight_terms,
+        p.availability_terms,
+        p.taxes_terms,
+        p.validity_terms,
+        id
+      );
     }
   });
 
@@ -2082,6 +2278,14 @@ const templateData = {
     quotation.terms_conditions ||
     settings?.quotation_terms ||
     '',
+  sales_person_name: quotation.sales_person_name !== undefined && quotation.sales_person_name !== null ? quotation.sales_person_name : '',
+  sales_person_phone: quotation.sales_person_phone !== undefined && quotation.sales_person_phone !== null ? quotation.sales_person_phone : '',
+  delivery_terms: quotation.delivery_terms || 'Ex Godown',
+  payment_terms: quotation.payment_terms || '100% advance',
+  freight_terms: quotation.freight_terms || 'To Pay',
+  availability_terms: quotation.availability_terms || 'Ex-Stock / 2-3 Weeks',
+  taxes_terms: quotation.taxes_terms || 'GST 18% Extra',
+  validity_terms: quotation.validity_terms || '30 Days',
   from_company_name: settings?.company_name || '',
   from_address: settings?.address || '',
   from_email: settings?.email || '',
@@ -2187,6 +2391,14 @@ res.end(pdf,'binary');
 
 });
 
+
+app.use((err, _req, res, _next) => {
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({ message: 'The uploaded file is too large. Maximum supported file size is 100MB.' });
+  }
+  console.error('Server error:', err);
+  res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
+});
 
 app.listen(PORT, () => {
   console.log(`API running at http://localhost:${PORT}`);

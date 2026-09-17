@@ -16,19 +16,15 @@ export function choithramTemplate(data) {
     )
     .join('');
 
-  const terms = (data.terms_conditions || '')
-    .split('\n')
-    .filter(Boolean);
-
-  const termsList = (terms.length
-    ? terms
-    : [
-        'Availability – 1 week from the date of PO.',
-        'Payment- 100% advance along with PO.',
-        'Taxes - 18% GST Extra.',
-        'Delivery– Ex Our Godown, Indore.',
-        'Local Freight – To pay.'
+  const termsList = (data.delivery_terms || data.payment_terms || data.freight_terms || !data.terms_conditions
+    ? [
+        `Availability – ${data.availability_terms || '1 week from the date of PO.'}`,
+        `Payment- ${data.payment_terms || '100% advance along with PO.'}`,
+        `Taxes - ${data.taxes_terms || '18% GST Extra.'}`,
+        `Delivery– ${data.delivery_terms || 'Ex Our Godown, Indore.'}`,
+        `Local Freight – ${data.freight_terms || 'To pay.'}`
       ]
+    : (data.terms_conditions || '').split('\n').filter(Boolean)
   )
     .map((t) => `<li>${t}</li>`)
     .join('');
@@ -143,6 +139,7 @@ ${termsList}
 <div class="signature">
 Yours truly,
 <br><br>
+${data.sales_person_name ? `<b>${data.sales_person_name}</b><br>${data.sales_person_phone || ''}<br>` : ''}
 <b>Pareek Power &amp; Pumps Pvt. Ltd.</b>
 <br>
 Indore (M.P.)

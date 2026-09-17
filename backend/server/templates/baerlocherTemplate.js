@@ -14,19 +14,15 @@ export function baerlocherTemplate(data) {
     )
     .join('');
 
-  const terms = (data.terms_conditions || '')
-    .split('\n')
-    .filter(Boolean);
-
-  const termsList = (terms.length
-    ? terms
-    : [
-        'Availability – 6-8 weeks from the receipt of PO.',
-        'Payment- 30% advance along with PO, balance 70% along with PI before dispatch.',
-        'Taxes - GST 18% extra at actual.',
-        'Delivery– Ex Our Godown, Indore.',
-        'Freight – To Pay.'
+  const termsList = (data.delivery_terms || data.payment_terms || data.freight_terms || !data.terms_conditions
+    ? [
+        `Availability – ${data.availability_terms || '6-8 weeks from the receipt of PO.'}`,
+        `Payment- ${data.payment_terms || '30% advance along with PO, balance 70% along with PI before dispatch.'}`,
+        `Taxes - ${data.taxes_terms || 'GST 18% extra at actual.'}`,
+        `Delivery– ${data.delivery_terms || 'Ex Our Godown, Indore.'}`,
+        `Freight – ${data.freight_terms || 'To Pay.'}`
       ]
+    : (data.terms_conditions || '').split('\n').filter(Boolean)
   )
     .map((t) => `<li>${t}</li>`)
     .join('');
@@ -145,6 +141,7 @@ ${termsList}
 <div class="signature">
 Yours truly,
 <br><br>
+${data.sales_person_name ? `<b>${data.sales_person_name}</b><br>${data.sales_person_phone || ''}<br>` : ''}
 <b>For Pareek Power &amp; Pumps Pvt. Ltd.</b>
 <br>
 Indore (M.P.)
