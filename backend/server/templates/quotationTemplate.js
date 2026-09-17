@@ -232,23 +232,23 @@ Terms & Conditions
 <ol>
 
 <li>
-Availability – 1 week
+Availability – ${data.availability_terms || '1 week'}
 </li>
 
 <li>
-Payment – 100% advance
+Payment – ${data.payment_terms || '100% advance'}
 </li>
 
 <li>
-Taxes – 18% GST Extra
+Taxes – ${data.taxes_terms || '18% GST Extra'}
 </li>
 
 <li>
-Delivery – Ex Godown
+Delivery – ${data.delivery_terms || 'Ex Godown'}
 </li>
 
 <li>
-Freight – To Pay
+Freight – ${data.freight_terms || 'To Pay'}
 </li>
 
 </ol>
@@ -259,11 +259,11 @@ Yours truly,
 
 <br><br>
 
-Rishabh Nigam
+${data.sales_person_name || ''}
 
 <br>
 
-91790-76660
+${data.sales_person_phone || ''}
 
 <br><br>
 

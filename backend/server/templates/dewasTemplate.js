@@ -33,8 +33,17 @@ export function dewasTemplate(data) {
     const sucDelSize = cf.suc_del_size || cf.size || cf.delivery_size || item.size || '';
     const maxSolidSize = cf.max_solid_size || cf.solid_size || item.solid_size || '';
     const qty = item.qty !== undefined && item.qty !== null ? item.qty : '';
-    const price = item.rate !== undefined && item.rate !== null ? formatCurrency(item.rate) : '';
-    const lineTotal = item.line_total !== undefined && item.line_total !== null ? formatCurrency(item.line_total) : (item.qty && item.rate ? formatCurrency(item.qty * item.rate) : '');
+    const discountedPrice = (item.discounted_price !== undefined && item.discounted_price !== null && item.discounted_price !== '')
+      ? Number(item.discounted_price)
+      : (cf.discounted_price !== undefined && cf.discounted_price !== null && cf.discounted_price !== ''
+          ? Number(cf.discounted_price)
+          : (item.rate !== undefined && item.rate !== null && item.rate !== ''
+              ? (item.discount_pct ? Number(item.rate) * (1 - Number(item.discount_pct) / 100) : Number(item.rate))
+              : null));
+    const price = discountedPrice !== null ? formatCurrency(discountedPrice) : '';
+    const lineTotal = item.line_total !== undefined && item.line_total !== null
+      ? formatCurrency(item.line_total)
+      : (item.qty && discountedPrice !== null ? formatCurrency(Number(item.qty) * discountedPrice) : '');
 
     return `
       <tr>
@@ -76,18 +85,19 @@ export function dewasTemplate(data) {
 
   // Parse terms & conditions
   let termsHtml = '';
-  if (data.terms_conditions && typeof data.terms_conditions === 'string' && data.terms_conditions.trim()) {
+  if (data.delivery_terms || data.payment_terms || data.freight_terms || data.availability_terms || !data.terms_conditions) {
+    termsHtml = `
+      <div><span class="term-num">1.</span> <span class="term-label">Availability –</span> ${data.availability_terms || data.availability || 'Ex-Stock / 2-3 Weeks'}</div>
+      <div><span class="term-num">2.</span> <span class="term-label">Payment:</span> ${data.payment_terms || '100% Against PI / Advance'}</div>
+      <div><span class="term-num">3.</span> <span class="term-label">Taxes -</span> ${data.taxes_terms || data.taxes || 'GST 18% Extra'}</div>
+      <div><span class="term-num">4.</span> <span class="term-label">This offer is valid till:</span> ${data.validity_terms || data.validity || '30 Days'}</div>
+      <div><span class="term-num">5.</span> <span class="term-label">Delivery:</span> ${data.delivery_terms || data.delivery || 'Ex Our Godown, Indore'}</div>
+      <div><span class="term-num">6.</span> <span class="term-label">Local Freight:</span> ${data.freight_terms || data.freight || 'Extra at actual / To Pay'}</div>
+      <div><span class="term-num">7.</span> <span class="term-label">Warranty –</span> 12 Months against manufacturing defects only.</div>
+    `;
+  } else {
     const lines = data.terms_conditions.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     termsHtml = lines.map((line, i) => `<div><span class="term-num">${i + 1}.</span> <span class="term-text">${line.replace(/^\d+[\.\)]\s*/, '')}</span></div>`).join('');
-  } else {
-    termsHtml = `
-      <div><span class="term-num">1.</span> <span class="term-label">Availability –</span> ${data.availability || 'Ex-Stock / 2-3 Weeks'}</div>
-      <div><span class="term-num">2.</span> <span class="term-label">Payment:</span> ${data.payment_terms || '100% Against PI / Advance'}</div>
-      <div><span class="term-num">3.</span> <span class="term-label">Taxes -</span> ${data.taxes || 'GST 18% Extra'}</div>
-      <div><span class="term-num">4.</span> <span class="term-label">This offer is valid till:</span> ${data.validity || '30 Days'}</div>
-      <div><span class="term-num">5.</span> <span class="term-label">Local Freight:</span> ${data.freight || 'Extra at actual / To Pay'}</div>
-      <div><span class="term-num">6.</span> <span class="term-label">Warranty –</span> 12 Months against manufacturing defects only.</div>
-    `;
   }
 
   const grandTotal = data.total_amount ? formatCurrency(data.total_amount) : (data.subtotal ? formatCurrency(data.subtotal) : '0');
@@ -431,8 +441,8 @@ export function dewasTemplate(data) {
       <div class="signoff-section">
         <p>We hope, this is in line with your requirement.</p>
         <p>Yours truly,</p>
-        <div class="sign-name">${data.sales_person_name || 'Puneet Choudhary'}</div>
-        <div class="sign-phone">${data.sales_person_phone || '9179076660'}</div>
+        <div class="sign-name">${data.sales_person_name || ''}</div>
+        <div class="sign-phone">${data.sales_person_phone || ''}</div>
         <div class="sign-company">
           Pareek Power &amp; Pumps Pvt.Ltd.<br>
           Indore(M.P.)

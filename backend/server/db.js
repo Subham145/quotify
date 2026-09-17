@@ -1,6 +1,12 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { getDefaultPermissions } from './permissions.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const db = new Database('quotify.db');
 db.pragma('journal_mode = WAL');
@@ -278,11 +284,35 @@ export function initDb() {
   if (!quotationColumns.some((c) => c.name === 'category')) {
     db.exec("ALTER TABLE quotations ADD COLUMN category TEXT DEFAULT 'DEWAS'");
   }
+  const quotationColsToAdd = [
+    'template_type',
+    'attention_person',
+    'subject',
+    'application',
+    'flow',
+    'head',
+    'sales_person_name',
+    'sales_person_phone',
+    'delivery_terms',
+    'payment_terms',
+    'freight_terms',
+    'availability_terms',
+    'taxes_terms',
+    'validity_terms'
+  ];
+  quotationColsToAdd.forEach((col) => {
+    if (!quotationColumns.some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE quotations ADD COLUMN ${col} TEXT`);
+    }
+  });
 
   const quotationItemColumns = db.prepare('PRAGMA table_info(quotation_items)').all();
-  if (!quotationItemColumns.some((c) => c.name === 'custom_fields')) {
-    db.exec('ALTER TABLE quotation_items ADD COLUMN custom_fields TEXT');
-  }
+  const itemColsToAdd = ['model', 'motor_hp', 'head', 'flow_rate', 'size', 'custom_fields'];
+  itemColsToAdd.forEach((col) => {
+    if (!quotationItemColumns.some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE quotation_items ADD COLUMN ${col} TEXT`);
+    }
+  });
 
   const productColumns = db.prepare('PRAGMA table_info(products)').all();
   const productColsToAdd = ['hp', 'kw', 'head', 'flow_rate', 'pipe_size', 'solid_size', 'stages', 'specs'];
@@ -403,6 +433,37 @@ export function initDb() {
   const defaultCategories = ['Digiset', 'Kirloskar – Dewas', 'Kirloskar – Wadi'];
   const insertCategory = db.prepare('INSERT OR IGNORE INTO product_categories (name, is_active) VALUES (?, 1)');
   defaultCategories.forEach((name) => insertCategory.run(name));
+
+  // Auto-seed from seedData.json on first deploy if database has 0 products
+  try {
+    const productCount = db.prepare('SELECT count(*) as count FROM products').get();
+    const seedFilePath = path.resolve(__dirname, '../seedData.json');
+    if (productCount && productCount.count === 0 && fs.existsSync(seedFilePath)) {
+      console.log('[Seed] Fresh database detected. Auto-seeding from seedData.json...');
+      const raw = fs.readFileSync(seedFilePath, 'utf-8');
+      const data = JSON.parse(raw);
+      const tables = Object.keys(data);
+      const seedTx = db.transaction(() => {
+        db.pragma('foreign_keys = OFF');
+        for (const table of tables) {
+          const rows = data[table];
+          if (!Array.isArray(rows) || rows.length === 0) continue;
+          for (const row of rows) {
+            const keys = Object.keys(row);
+            const placeholders = keys.map(() => '?').join(', ');
+            const columns = keys.map((k) => `"${k}"`).join(', ');
+            const values = keys.map((k) => row[k]);
+            db.prepare(`INSERT OR REPLACE INTO "${table}" (${columns}) VALUES (${placeholders})`).run(...values);
+          }
+        }
+        db.pragma('foreign_keys = ON');
+      });
+      seedTx();
+      console.log('[Seed] Auto-seed finished successfully!');
+    }
+  } catch (err) {
+    console.warn('[Seed] Auto-seed check warning:', err.message);
+  }
 }
 
 export function nextCounter(counterKey) {

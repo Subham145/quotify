@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node server/index.js",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "db:export": "node server/exportData.js",
+    "db:import": "node server/importData.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

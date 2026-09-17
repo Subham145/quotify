@@ -1,3 +1,5 @@
+export const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+
 let token = localStorage.getItem('token') || null;
 
 export function setToken(newToken) {
@@ -9,8 +11,15 @@ export function setToken(newToken) {
   }
 }
 
+export function getApiUrl(path = '') {
+  if (!path) return API_BASE;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE}${cleanPath}`;
+}
+
 export async function api(path, options = {}) {
-  const res = await fetch(`/api${path}`, {
+  const url = getApiUrl(path);
+  const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -29,9 +38,13 @@ export async function api(path, options = {}) {
   try {
     data = await res.json();
   } catch {
-    return null;
+    data = null;
   }
 
-  // 🔥 IMPORTANT: return actual object (for login)
+  if (!res.ok) {
+    const errorMsg = data?.message || data?.error || `Request failed with status ${res.status}`;
+    throw new Error(errorMsg);
+  }
+
   return data;
 }

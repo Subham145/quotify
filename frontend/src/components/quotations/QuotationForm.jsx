@@ -2,6 +2,15 @@ import { useState } from "react";
 
 export default function QuotationForm() {
 
+const [salesPersonName, setSalesPersonName] = useState("Rishabh Nigam");
+const [salesPersonPhone, setSalesPersonPhone] = useState("91790-76660");
+const [deliveryTerms, setDeliveryTerms] = useState("Ex Godown");
+const [paymentTerms, setPaymentTerms] = useState("100% advance");
+const [freightTerms, setFreightTerms] = useState("To Pay");
+const [availabilityTerms, setAvailabilityTerms] = useState("1 week from PO");
+const [validityTerms, setValidityTerms] = useState("15 days");
+const [taxesTerms, setTaxesTerms] = useState("18% GST Extra");
+
 const [rows,setRows]=useState([
 {
 model:"KOS 335+",
@@ -304,30 +313,60 @@ Terms & Condition:-
 
 </h3>
 
-<ol className="list-decimal ml-6 mt-3 space-y-1">
+<ol className="list-decimal ml-6 mt-3 space-y-2">
 
-<li>
-Availability – 1 week from PO
+<li className="flex items-center gap-1">
+<span>Availability –</span>
+<input
+className="border-b outline-none px-1 py-0.5 text-xs font-medium w-64"
+value={availabilityTerms}
+onChange={(e) => setAvailabilityTerms(e.target.value)}
+/>
 </li>
 
-<li>
-Payment – 100% advance
+<li className="flex items-center gap-1">
+<span>Payment –</span>
+<input
+className="border-b outline-none px-1 py-0.5 text-xs font-medium w-64"
+value={paymentTerms}
+onChange={(e) => setPaymentTerms(e.target.value)}
+/>
 </li>
 
-<li>
-Taxes – 18% GST Extra
+<li className="flex items-center gap-1">
+<span>Taxes –</span>
+<input
+className="border-b outline-none px-1 py-0.5 text-xs font-medium w-64"
+value={taxesTerms}
+onChange={(e) => setTaxesTerms(e.target.value)}
+/>
 </li>
 
-<li>
-Offer validity – 15 days
+<li className="flex items-center gap-1">
+<span>Offer validity –</span>
+<input
+className="border-b outline-none px-1 py-0.5 text-xs font-medium w-64"
+value={validityTerms}
+onChange={(e) => setValidityTerms(e.target.value)}
+/>
 </li>
 
-<li>
-Delivery – Ex Godown
+<li className="flex items-center gap-1">
+<span>Delivery –</span>
+<input
+className="border-b outline-none px-1 py-0.5 text-xs font-medium w-64"
+value={deliveryTerms}
+onChange={(e) => setDeliveryTerms(e.target.value)}
+/>
 </li>
 
-<li>
-Freight – To Pay
+<li className="flex items-center gap-1">
+<span>Freight –</span>
+<input
+className="border-b outline-none px-1 py-0.5 text-xs font-medium w-64"
+value={freightTerms}
+onChange={(e) => setFreightTerms(e.target.value)}
+/>
 </li>
 
 </ol>
@@ -348,17 +387,23 @@ Yours truly,
 
 </p>
 
-<p className="font-bold mt-4">
+<div className="mt-4">
+<input
+className="border-b outline-none font-bold text-sm w-64 py-0.5"
+value={salesPersonName}
+onChange={(e) => setSalesPersonName(e.target.value)}
+placeholder="Sign-off Person Name"
+/>
+</div>
 
-Rishabh Nigam
-
-</p>
-
-<p>
-
-91790-76660
-
-</p>
+<div className="mt-1">
+<input
+className="border-b outline-none text-xs w-64 py-0.5"
+value={salesPersonPhone}
+onChange={(e) => setSalesPersonPhone(e.target.value)}
+placeholder="Phone Number"
+/>
+</div>
 
 <p className="mt-4 font-semibold">
 
