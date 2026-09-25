@@ -106,6 +106,337 @@ function ProductSearchInput({ products = [], onSelect, currentModel = '' }) {
   );
 }
 
+const DIGISET_DEFAULT_TERMS = {
+  panel_type: 'Both (Standard / Automatic)',
+  sales_person_name: 'Pradeep Ghadge',
+  sales_person_phone: '8269000495',
+  taxes_terms: '-GST@18% shall be charged extra in the above price.',
+  delivery_terms: 'Ex Godown',
+  warranty_terms: '5 Years warranty / 5000 hours subject to warranty document attached.',
+  insurance_terms: '-Freight & Transit Insurance up-to site at actual is INCLUDED in above price.',
+  loading_terms: '– To be done by client.',
+  installation_terms: '– In client’s scope, i.e. unloading of DG set, It’s Placement on platform, Preparation of platform, four numbers of dedicated earthing, cabling with its lugs etc. However, commissioning shall be done by us free of charge after you complete the installation work. Please note that the DG set must be commissioned within 6 months time from the date of our invoice otherwise DG Set will have to undergo a chargeable revalidation by service dealer prior to commissioning.',
+  permission_terms: '– All necessary legal requirements / permissions should be obtained by the Buyer.',
+  payment_terms: '-30% advance along with the order and balance 70% against Proforma Invoice prior to dispatch of set from principal’s plant.',
+  validity_terms: '- The offer is valid for 30 Days.',
+  statutory_terms: '- Presently the above taxes and duties are applicable. However, if there is any change in the taxes and duties or if any fresh taxes and duties are levied by central, state or local government the same shall be applicable at the time of invoicing to your account.',
+  force_majeure_terms: '- The offer shall be subjected to force majeure clause.',
+  arbitration_terms: '- The venue of arbitration shall be INDORE for any disputes or differences arising under the terms of contract placed on the company.',
+  cancellation_terms: '- In case of order cancellation 10% of total value will be levied.',
+};
+
+function ControlPanelSelector({ value, onChange }) {
+  const selected = value || 'Both (Standard / Automatic)';
+  const options = [
+    { id: 'Standard Control Panel', label: 'Standard Control Panel', icon: '⚙️', desc: 'Standard key-start with RMU unit' },
+    { id: 'Automatic Control Panel', label: 'Automatic Control Panel', icon: '⚡', desc: 'AMF automatic mains failure panel' },
+    { id: 'Both (Standard / Automatic)', label: 'Both (Standard / Automatic)', icon: '🔄', desc: 'Dual Standard & AMF offer' },
+  ];
+
+  return (
+    <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-blue-50/50 p-4 space-y-2.5 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <label className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+            <span className="text-base">⚡</span> Control Panel Configuration (DIGISET)
+          </label>
+          <p className="text-[11px] text-slate-500">
+            Select Standard Control Panel, Automatic AMF Panel, or Both options for this quotation:
+          </p>
+        </div>
+        <span className="rounded-full bg-indigo-100 border border-indigo-300 px-3 py-1 text-xs font-bold text-indigo-800">
+          Selected: {selected}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+        {options.map((opt) => {
+          const isSelected = selected === opt.id;
+          return (
+            <button
+              type="button"
+              key={opt.id}
+              onClick={() => onChange(opt.id)}
+              className={`flex flex-col items-start p-3 rounded-lg border text-left transition-all ${
+                isSelected
+                  ? 'border-indigo-600 bg-white ring-2 ring-indigo-500/30 text-indigo-950 shadow-sm'
+                  : 'border-slate-200 bg-white/70 hover:bg-white text-slate-700'
+              }`}
+            >
+              <span className="text-xs font-bold flex items-center gap-1.5">
+                <span>{opt.icon}</span> {opt.label}
+              </span>
+              <span className="text-[10px] text-slate-500 mt-1">{opt.desc}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CommercialTermsEditor({ values, onChange, isDigiset }) {
+  if (!isDigiset) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-xs">
+        <div className="border-b border-slate-100 pb-2">
+          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span>📝 Quotation Terms &amp; Sign-off Details</span>
+          </h4>
+          <p className="text-xs text-slate-500">Edit sign-off contact person and commercial terms for the quotation PDF.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-700">Yours truly (Contact Person)</label>
+            <input
+              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              value={values.sales_person_name || ''}
+              onChange={(e) => onChange('sales_person_name', e.target.value)}
+              placeholder="e.g. Puneet Choudhary"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-700">Contact Number</label>
+            <input
+              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              value={values.sales_person_phone || ''}
+              onChange={(e) => onChange('sales_person_phone', e.target.value)}
+              placeholder="e.g. 91790-76660"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-700">Delivery Terms</label>
+            <input
+              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              value={values.delivery_terms || ''}
+              onChange={(e) => onChange('delivery_terms', e.target.value)}
+              placeholder="e.g. Ex Godown"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-700">Payment Terms</label>
+            <input
+              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              value={values.payment_terms || ''}
+              onChange={(e) => onChange('payment_terms', e.target.value)}
+              placeholder="e.g. 100% advance"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-700">Freight Terms</label>
+            <input
+              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              value={values.freight_terms || ''}
+              onChange={(e) => onChange('freight_terms', e.target.value)}
+              placeholder="e.g. To Pay"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 shadow-xs">
+      <div className="border-b border-slate-100 pb-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span>📜 Commercial Terms &amp; Conditions (DIGISET)</span>
+            <span className="rounded bg-brand-50 border border-brand-200 px-2 py-0.5 text-[11px] font-bold text-brand-700">
+              13 Terms - All Editable
+            </span>
+          </h4>
+          <p className="text-xs text-slate-500 mt-0.5">
+            All 13 official commercial terms below are pre-filled and completely editable for this quotation &amp; PDF:
+          </p>
+        </div>
+      </div>
+
+      {/* Sign-off Details */}
+      <div className="grid gap-3 sm:grid-cols-2 bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
+        <div>
+          <label className="text-xs font-bold text-slate-700">Yours truly (Contact Person)</label>
+          <input
+            className="w-full rounded-lg border bg-white p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.sales_person_name || ''}
+            onChange={(e) => onChange('sales_person_name', e.target.value)}
+            placeholder="e.g. Pradeep Ghadge"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-bold text-slate-700">Contact Number</label>
+          <input
+            className="w-full rounded-lg border bg-white p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.sales_person_phone || ''}
+            onChange={(e) => onChange('sales_person_phone', e.target.value)}
+            placeholder="e.g. 8269000495"
+          />
+        </div>
+      </div>
+
+      {/* 13 Commercial Terms */}
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 1. GST Clause
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.taxes_terms !== undefined ? values.taxes_terms : DIGISET_DEFAULT_TERMS.taxes_terms}
+            onChange={(e) => onChange('taxes_terms', e.target.value)}
+            placeholder="-GST@18% shall be charged extra in the above price."
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 2. DELIVERY
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.delivery_terms !== undefined ? values.delivery_terms : DIGISET_DEFAULT_TERMS.delivery_terms}
+            onChange={(e) => onChange('delivery_terms', e.target.value)}
+            placeholder="Ex Godown"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 3. WARRANTY
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.warranty_terms !== undefined ? values.warranty_terms : DIGISET_DEFAULT_TERMS.warranty_terms}
+            onChange={(e) => onChange('warranty_terms', e.target.value)}
+            placeholder="5 Years warranty / 5000 hours subject to warranty document attached."
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 4. FREIGHT &amp; TRANSIT INSURANCE
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.insurance_terms !== undefined ? values.insurance_terms : DIGISET_DEFAULT_TERMS.insurance_terms}
+            onChange={(e) => onChange('insurance_terms', e.target.value)}
+            placeholder="-Freight & Transit Insurance up-to site at actual is INCLUDED in above price."
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 5. LOADING / UNLOADING / POSITIONING OF SET AT SITE
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.loading_terms !== undefined ? values.loading_terms : DIGISET_DEFAULT_TERMS.loading_terms}
+            onChange={(e) => onChange('loading_terms', e.target.value)}
+            placeholder="– To be done by client."
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 7. PERMISSION FOR THE GENERATOR SET
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.permission_terms !== undefined ? values.permission_terms : DIGISET_DEFAULT_TERMS.permission_terms}
+            onChange={(e) => onChange('permission_terms', e.target.value)}
+            placeholder="– All necessary legal requirements / permissions should be obtained by the Buyer."
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 6. INSTALLATION &amp; COMMISSIONING
+          </label>
+          <textarea
+            rows={2}
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.installation_terms !== undefined ? values.installation_terms : DIGISET_DEFAULT_TERMS.installation_terms}
+            onChange={(e) => onChange('installation_terms', e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 8. TERMS OF PAYMENT
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.payment_terms !== undefined ? values.payment_terms : DIGISET_DEFAULT_TERMS.payment_terms}
+            onChange={(e) => onChange('payment_terms', e.target.value)}
+            placeholder="-30% advance along with the order..."
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 9. VALIDITY
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.validity_terms !== undefined ? values.validity_terms : DIGISET_DEFAULT_TERMS.validity_terms}
+            onChange={(e) => onChange('validity_terms', e.target.value)}
+            placeholder="- The offer is valid for 30 Days."
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 10. STATUTORY VARIATIONS
+          </label>
+          <textarea
+            rows={2}
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.statutory_terms !== undefined ? values.statutory_terms : DIGISET_DEFAULT_TERMS.statutory_terms}
+            onChange={(e) => onChange('statutory_terms', e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 11. FORCE MAJEURE CLAUSE
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.force_majeure_terms !== undefined ? values.force_majeure_terms : DIGISET_DEFAULT_TERMS.force_majeure_terms}
+            onChange={(e) => onChange('force_majeure_terms', e.target.value)}
+            placeholder="- The offer shall be subjected to force majeure clause."
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+            <span>➢</span> 12. ARBITRATION
+          </label>
+          <input
+            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            value={values.arbitration_terms !== undefined ? values.arbitration_terms : DIGISET_DEFAULT_TERMS.arbitration_terms}
+            onChange={(e) => onChange('arbitration_terms', e.target.value)}
+            placeholder="- The venue of arbitration shall be INDORE..."
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+            <span>➢</span> 13. CANCELLATION OF ORDER
+            <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-semibold">Editable</span>
+          </label>
+          <input
+            className="w-full rounded-lg border-2 border-rose-300 bg-rose-50/30 p-2 text-xs font-medium text-rose-950 focus:border-rose-500 focus:outline-none"
+            value={values.cancellation_terms !== undefined ? values.cancellation_terms : DIGISET_DEFAULT_TERMS.cancellation_terms}
+            onChange={(e) => onChange('cancellation_terms', e.target.value)}
+            placeholder="- In case of order cancellation 10% of total value will be levied."
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Quotations() {
   const qc = useQueryClient();
   const { data: quotations = [] } = useQuery({ queryKey: ['quotations'], queryFn: () => api('/quotations') });
@@ -259,11 +590,23 @@ export default function Quotations() {
       if (qData) {
         setEditingQuotation({
           ...qData,
-          sales_person_name: qData.sales_person_name !== undefined && qData.sales_person_name !== null ? qData.sales_person_name : '',
-          sales_person_phone: qData.sales_person_phone !== undefined && qData.sales_person_phone !== null ? qData.sales_person_phone : '',
+          sales_person_name: qData.sales_person_name !== undefined && qData.sales_person_name !== null && qData.sales_person_name !== '' ? qData.sales_person_name : (qData.category === 'DIGISET' ? 'Pradeep Ghadge' : 'Puneet Choudhary'),
+          sales_person_phone: qData.sales_person_phone !== undefined && qData.sales_person_phone !== null && qData.sales_person_phone !== '' ? qData.sales_person_phone : (qData.category === 'DIGISET' ? '8269000495' : '9179076660'),
+          panel_type: qData.panel_type || (qData.category === 'DIGISET' ? 'Both (Standard / Automatic)' : ''),
           delivery_terms: qData.delivery_terms || 'Ex Godown',
-          payment_terms: qData.payment_terms || '100% advance',
-          freight_terms: qData.freight_terms || 'To Pay',
+          payment_terms: qData.payment_terms || (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.payment_terms : '100% advance'),
+          freight_terms: qData.freight_terms || (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.insurance_terms : 'To Pay'),
+          taxes_terms: qData.taxes_terms !== undefined ? qData.taxes_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.taxes_terms : 'GST 18% Extra'),
+          validity_terms: qData.validity_terms !== undefined ? qData.validity_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.validity_terms : '30 Days'),
+          warranty_terms: qData.warranty_terms !== undefined ? qData.warranty_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.warranty_terms : ''),
+          insurance_terms: qData.insurance_terms !== undefined ? qData.insurance_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.insurance_terms : ''),
+          loading_terms: qData.loading_terms !== undefined ? qData.loading_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.loading_terms : ''),
+          installation_terms: qData.installation_terms !== undefined ? qData.installation_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.installation_terms : ''),
+          permission_terms: qData.permission_terms !== undefined ? qData.permission_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.permission_terms : ''),
+          statutory_terms: qData.statutory_terms !== undefined ? qData.statutory_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.statutory_terms : ''),
+          force_majeure_terms: qData.force_majeure_terms !== undefined ? qData.force_majeure_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.force_majeure_terms : ''),
+          arbitration_terms: qData.arbitration_terms !== undefined ? qData.arbitration_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.arbitration_terms : ''),
+          cancellation_terms: qData.cancellation_terms !== undefined ? qData.cancellation_terms : (qData.category === 'DIGISET' ? DIGISET_DEFAULT_TERMS.cancellation_terms : ''),
           items: (qData.items && qData.items.length > 0 ? qData.items : [{}]).map((it) => {
             const cf = it.custom_fields ? (typeof it.custom_fields === 'string' ? JSON.parse(it.custom_fields) : it.custom_fields) : {};
             const r = it.rate !== undefined && it.rate !== null ? it.rate : 0;
@@ -730,17 +1073,47 @@ export default function Quotations() {
             <select
               className="w-full rounded border border-brand-300 bg-brand-50 p-2 text-xs font-bold text-brand-800"
               value={form.category || 'DEWAS'}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              onChange={(e) => {
+                const cat = e.target.value;
+                setForm((prev) => ({
+                  ...prev,
+                  category: cat,
+                  ...(cat === 'DIGISET' ? {
+                    panel_type: prev.panel_type || DIGISET_DEFAULT_TERMS.panel_type,
+                    sales_person_name: prev.sales_person_name === 'Puneet Choudhary' ? DIGISET_DEFAULT_TERMS.sales_person_name : (prev.sales_person_name || DIGISET_DEFAULT_TERMS.sales_person_name),
+                    sales_person_phone: prev.sales_person_phone === '9179076660' ? DIGISET_DEFAULT_TERMS.sales_person_phone : (prev.sales_person_phone || DIGISET_DEFAULT_TERMS.sales_person_phone),
+                    taxes_terms: prev.taxes_terms || DIGISET_DEFAULT_TERMS.taxes_terms,
+                    delivery_terms: prev.delivery_terms || DIGISET_DEFAULT_TERMS.delivery_terms,
+                    warranty_terms: prev.warranty_terms || DIGISET_DEFAULT_TERMS.warranty_terms,
+                    insurance_terms: prev.insurance_terms || DIGISET_DEFAULT_TERMS.insurance_terms,
+                    loading_terms: prev.loading_terms || DIGISET_DEFAULT_TERMS.loading_terms,
+                    installation_terms: prev.installation_terms || DIGISET_DEFAULT_TERMS.installation_terms,
+                    permission_terms: prev.permission_terms || DIGISET_DEFAULT_TERMS.permission_terms,
+                    payment_terms: prev.payment_terms === '100% advance' ? DIGISET_DEFAULT_TERMS.payment_terms : (prev.payment_terms || DIGISET_DEFAULT_TERMS.payment_terms),
+                    validity_terms: prev.validity_terms || DIGISET_DEFAULT_TERMS.validity_terms,
+                    statutory_terms: prev.statutory_terms || DIGISET_DEFAULT_TERMS.statutory_terms,
+                    force_majeure_terms: prev.force_majeure_terms || DIGISET_DEFAULT_TERMS.force_majeure_terms,
+                    arbitration_terms: prev.arbitration_terms || DIGISET_DEFAULT_TERMS.arbitration_terms,
+                    cancellation_terms: prev.cancellation_terms || DIGISET_DEFAULT_TERMS.cancellation_terms,
+                    freight_terms: prev.freight_terms === 'To Pay' ? DIGISET_DEFAULT_TERMS.insurance_terms : (prev.freight_terms || DIGISET_DEFAULT_TERMS.insurance_terms),
+                  } : {})
+                }));
+              }}
             >
-              <option value="DEWAS">DEWAS (Kirloskar Pumps)</option>
-              <option value="DIGISET">DIGISET</option>
+              <option value="DEWAS">DEWAS</option>
               <option value="WADI">WADI</option>
-              {productCategories.map((c) => (
-                <option key={c.id} value={c.name}>{c.name}</option>
-              ))}
+              <option value="DIGISET">DIGISET</option>
             </select>
           </div>
         </div>
+
+        {/* DIGISET Control Panel Selection (Standard, Automatic, Both) */}
+        {form.category === 'DIGISET' && (
+          <ControlPanelSelector
+            value={form.panel_type}
+            onChange={(val) => setForm({ ...form, panel_type: val })}
+          />
+        )}
 
         {/* Line Item Details Section */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
@@ -1091,61 +1464,11 @@ export default function Quotations() {
         </div>
 
         {/* Terms & Sign-off Details */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-xs">
-          <div className="border-b border-slate-100 pb-2">
-            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <span>📝 Quotation Terms &amp; Sign-off Details</span>
-            </h4>
-            <p className="text-xs text-slate-500">Edit sign-off contact person and commercial terms for the quotation PDF.</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Yours truly (Contact Person)</label>
-              <input
-                className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                value={form.sales_person_name || ''}
-                onChange={(e) => setForm({ ...form, sales_person_name: e.target.value })}
-                placeholder="e.g. Puneet Choudhary"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Contact Number</label>
-              <input
-                className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                value={form.sales_person_phone || ''}
-                onChange={(e) => setForm({ ...form, sales_person_phone: e.target.value })}
-                placeholder="e.g. 91790-76660"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Delivery Terms</label>
-              <input
-                className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                value={form.delivery_terms || ''}
-                onChange={(e) => setForm({ ...form, delivery_terms: e.target.value })}
-                placeholder="e.g. Ex Godown"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Payment Terms</label>
-              <input
-                className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                value={form.payment_terms || ''}
-                onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
-                placeholder="e.g. 100% advance"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Freight Terms</label>
-              <input
-                className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                value={form.freight_terms || ''}
-                onChange={(e) => setForm({ ...form, freight_terms: e.target.value })}
-                placeholder="e.g. To Pay"
-              />
-            </div>
-          </div>
-        </div>
+        <CommercialTermsEditor
+          values={form}
+          onChange={(field, val) => setForm((prev) => ({ ...prev, [field]: val }))}
+          isDigiset={form.category === 'DIGISET'}
+        />
 
         <button type="submit" className="rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-md">
           Create Quotation
@@ -1225,14 +1548,36 @@ export default function Quotations() {
                 <select
                   className="w-full rounded border p-2 text-xs font-bold bg-white text-slate-800"
                   value={editingQuotation.category || 'DEWAS'}
-                  onChange={(e) => setEditingQuotation({ ...editingQuotation, category: e.target.value })}
+                  onChange={(e) => {
+                    const cat = e.target.value;
+                    setEditingQuotation((prev) => ({
+                      ...prev,
+                      category: cat,
+                      ...(cat === 'DIGISET' ? {
+                        panel_type: prev.panel_type || DIGISET_DEFAULT_TERMS.panel_type,
+                        sales_person_name: prev.sales_person_name === 'Puneet Choudhary' ? DIGISET_DEFAULT_TERMS.sales_person_name : (prev.sales_person_name || DIGISET_DEFAULT_TERMS.sales_person_name),
+                        sales_person_phone: prev.sales_person_phone === '9179076660' ? DIGISET_DEFAULT_TERMS.sales_person_phone : (prev.sales_person_phone || DIGISET_DEFAULT_TERMS.sales_person_phone),
+                        taxes_terms: prev.taxes_terms || DIGISET_DEFAULT_TERMS.taxes_terms,
+                        delivery_terms: prev.delivery_terms || DIGISET_DEFAULT_TERMS.delivery_terms,
+                        warranty_terms: prev.warranty_terms || DIGISET_DEFAULT_TERMS.warranty_terms,
+                        insurance_terms: prev.insurance_terms || DIGISET_DEFAULT_TERMS.insurance_terms,
+                        loading_terms: prev.loading_terms || DIGISET_DEFAULT_TERMS.loading_terms,
+                        installation_terms: prev.installation_terms || DIGISET_DEFAULT_TERMS.installation_terms,
+                        permission_terms: prev.permission_terms || DIGISET_DEFAULT_TERMS.permission_terms,
+                        payment_terms: prev.payment_terms === '100% advance' ? DIGISET_DEFAULT_TERMS.payment_terms : (prev.payment_terms || DIGISET_DEFAULT_TERMS.payment_terms),
+                        validity_terms: prev.validity_terms || DIGISET_DEFAULT_TERMS.validity_terms,
+                        statutory_terms: prev.statutory_terms || DIGISET_DEFAULT_TERMS.statutory_terms,
+                        force_majeure_terms: prev.force_majeure_terms || DIGISET_DEFAULT_TERMS.force_majeure_terms,
+                        arbitration_terms: prev.arbitration_terms || DIGISET_DEFAULT_TERMS.arbitration_terms,
+                        cancellation_terms: prev.cancellation_terms || DIGISET_DEFAULT_TERMS.cancellation_terms,
+                        freight_terms: prev.freight_terms === 'To Pay' ? DIGISET_DEFAULT_TERMS.insurance_terms : (prev.freight_terms || DIGISET_DEFAULT_TERMS.insurance_terms),
+                      } : {})
+                    }));
+                  }}
                 >
-                  <option value="DEWAS">DEWAS (Kirloskar Pumps)</option>
-                  <option value="DIGISET">DIGISET</option>
+                  <option value="DEWAS">DEWAS</option>
                   <option value="WADI">WADI</option>
-                  {productCategories.map((c) => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
+                  <option value="DIGISET">DIGISET</option>
                 </select>
               </div>
 
@@ -1280,6 +1625,14 @@ export default function Quotations() {
                 />
               </div>
             </div>
+
+            {/* DIGISET Control Panel Selection inside Edit Modal */}
+            {editingQuotation.category === 'DIGISET' && (
+              <ControlPanelSelector
+                value={editingQuotation.panel_type}
+                onChange={(val) => setEditingQuotation({ ...editingQuotation, panel_type: val })}
+              />
+            )}
 
             {/* Editable Line Items Section */}
             <div className="space-y-3">
@@ -1606,61 +1959,11 @@ export default function Quotations() {
                 </div>
               </div>
               {/* Terms & Sign-off Details Inside Modal */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-xs">
-                <div className="border-b border-slate-100 pb-2">
-                  <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <span>📝 Quotation Terms &amp; Sign-off Details</span>
-                  </h4>
-                  <p className="text-xs text-slate-500">Edit sign-off contact person and commercial terms for the quotation PDF.</p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700">Yours truly (Contact Person)</label>
-                    <input
-                      className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                      value={editingQuotation.sales_person_name || ''}
-                      onChange={(e) => setEditingQuotation({ ...editingQuotation, sales_person_name: e.target.value })}
-                      placeholder="e.g. Puneet Choudhary"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700">Contact Number</label>
-                    <input
-                      className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                      value={editingQuotation.sales_person_phone || ''}
-                      onChange={(e) => setEditingQuotation({ ...editingQuotation, sales_person_phone: e.target.value })}
-                      placeholder="e.g. 91790-76660"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700">Delivery Terms</label>
-                    <input
-                      className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                      value={editingQuotation.delivery_terms || ''}
-                      onChange={(e) => setEditingQuotation({ ...editingQuotation, delivery_terms: e.target.value })}
-                      placeholder="e.g. Ex Godown"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700">Payment Terms</label>
-                    <input
-                      className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                      value={editingQuotation.payment_terms || ''}
-                      onChange={(e) => setEditingQuotation({ ...editingQuotation, payment_terms: e.target.value })}
-                      placeholder="e.g. 100% advance"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-700">Freight Terms</label>
-                    <input
-                      className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
-                      value={editingQuotation.freight_terms || ''}
-                      onChange={(e) => setEditingQuotation({ ...editingQuotation, freight_terms: e.target.value })}
-                      placeholder="e.g. To Pay"
-                    />
-                  </div>
-                </div>
-              </div>
+              <CommercialTermsEditor
+                values={editingQuotation}
+                onChange={(field, val) => setEditingQuotation((prev) => ({ ...prev, [field]: val }))}
+                isDigiset={editingQuotation.category === 'DIGISET'}
+              />
             </div>
 
             {/* Modal Footer Actions */}
@@ -1692,9 +1995,21 @@ export default function Quotations() {
                       head: editingQuotation.head,
                       sales_person_name: editingQuotation.sales_person_name,
                       sales_person_phone: editingQuotation.sales_person_phone,
+                      panel_type: editingQuotation.panel_type,
                       delivery_terms: editingQuotation.delivery_terms,
                       payment_terms: editingQuotation.payment_terms,
                       freight_terms: editingQuotation.freight_terms,
+                      taxes_terms: editingQuotation.taxes_terms,
+                      validity_terms: editingQuotation.validity_terms,
+                      warranty_terms: editingQuotation.warranty_terms,
+                      insurance_terms: editingQuotation.insurance_terms,
+                      loading_terms: editingQuotation.loading_terms,
+                      installation_terms: editingQuotation.installation_terms,
+                      permission_terms: editingQuotation.permission_terms,
+                      statutory_terms: editingQuotation.statutory_terms,
+                      force_majeure_terms: editingQuotation.force_majeure_terms,
+                      arbitration_terms: editingQuotation.arbitration_terms,
+                      cancellation_terms: editingQuotation.cancellation_terms,
                       items: (editingQuotation.items || []).map((it) => ({
                         description: it.description || it.model || '',
                         model: it.model || '',

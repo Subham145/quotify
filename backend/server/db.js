@@ -53,11 +53,21 @@ export function initDb() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS product_subgroups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL,
+      subgroup_name TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(group_id) REFERENCES product_groups(id)
+    );
+
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_name TEXT NOT NULL,
       code TEXT,
       group_id INTEGER,
+      subgroup_id INTEGER,
       category TEXT,
       hsn_code TEXT,
       price REAL NOT NULL DEFAULT 0,
@@ -65,7 +75,8 @@ export function initDb() {
       unit TEXT NOT NULL DEFAULT 'piece',
       stock_quantity REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(group_id) REFERENCES product_groups(id)
+      FOREIGN KEY(group_id) REFERENCES product_groups(id),
+      FOREIGN KEY(subgroup_id) REFERENCES product_subgroups(id)
     );
 
     CREATE TABLE IF NOT EXISTS inquiries (
@@ -298,7 +309,17 @@ export function initDb() {
     'freight_terms',
     'availability_terms',
     'taxes_terms',
-    'validity_terms'
+    'validity_terms',
+    'panel_type',
+    'warranty_terms',
+    'insurance_terms',
+    'loading_terms',
+    'installation_terms',
+    'permission_terms',
+    'statutory_terms',
+    'force_majeure_terms',
+    'arbitration_terms',
+    'cancellation_terms'
   ];
   quotationColsToAdd.forEach((col) => {
     if (!quotationColumns.some((c) => c.name === col)) {
@@ -315,6 +336,9 @@ export function initDb() {
   });
 
   const productColumns = db.prepare('PRAGMA table_info(products)').all();
+  if (!productColumns.some((c) => c.name === 'subgroup_id')) {
+    db.exec('ALTER TABLE products ADD COLUMN subgroup_id INTEGER');
+  }
   const productColsToAdd = ['hp', 'kw', 'head', 'flow_rate', 'pipe_size', 'solid_size', 'stages', 'specs'];
   productColsToAdd.forEach((col) => {
     if (!productColumns.some((c) => c.name === col)) {
@@ -430,9 +454,25 @@ export function initDb() {
   const insertSource = db.prepare('INSERT OR IGNORE INTO inquiry_sources (source_name, is_active) VALUES (?, 1)');
   defaultSources.forEach((source) => insertSource.run(source));
 
-  const defaultCategories = ['Digiset', 'Kirloskar – Dewas', 'Kirloskar – Wadi'];
+  const defaultCategories = ['DEWAS', 'WADI', 'DIGISET'];
   const insertCategory = db.prepare('INSERT OR IGNORE INTO product_categories (name, is_active) VALUES (?, 1)');
   defaultCategories.forEach((name) => insertCategory.run(name));
+
+  // Clean up and standardize categories in product_categories, products, and quotations
+  try {
+    db.prepare("DELETE FROM product_categories WHERE name NOT IN ('DEWAS', 'WADI', 'DIGISET')").run();
+    defaultCategories.forEach((name) => insertCategory.run(name));
+
+    db.prepare("UPDATE products SET category = 'DIGISET' WHERE LOWER(category) = 'digiset'").run();
+    db.prepare("UPDATE products SET category = 'DEWAS' WHERE LOWER(category) LIKE '%dewas%'").run();
+    db.prepare("UPDATE products SET category = 'WADI' WHERE LOWER(category) LIKE '%wadi%'").run();
+
+    db.prepare("UPDATE quotations SET category = 'DIGISET' WHERE LOWER(category) = 'digiset'").run();
+    db.prepare("UPDATE quotations SET category = 'DEWAS' WHERE LOWER(category) LIKE '%dewas%'").run();
+    db.prepare("UPDATE quotations SET category = 'WADI' WHERE LOWER(category) LIKE '%wadi%'").run();
+  } catch (err) {
+    console.warn('[Category Migration]', err.message);
+  }
 
   // Auto-seed from seedData.json on first deploy if database has 0 products
   try {

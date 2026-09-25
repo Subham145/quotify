@@ -15,7 +15,8 @@ npm run dev:all
 ```
 
 - Frontend: `http://127.0.0.1:5173`
-- Backend: `http://localhost:4000/api`
+- Backend: `http://localhost:4050/api`
+- Frontend: `http://localhost:5180`
 
 ## Workspace scripts (root)
 

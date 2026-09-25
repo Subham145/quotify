@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node server/index.js",
+    "dev": "node --watch server/index.js",
     "start": "node server/index.js",
     "db:export": "node server/exportData.js",
     "db:import": "node server/importData.js"

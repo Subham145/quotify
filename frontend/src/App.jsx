@@ -13,6 +13,7 @@ import Login from './pages/Login';
 import ProductCategories from './pages/ProductCategories';
 import ProductGroups from './pages/ProductGroups';
 import Products from './pages/Products';
+import QuotationTemplates from './pages/QuotationTemplates';
 import Reminders from './pages/Reminders';
 import Reports from './pages/Reports';
 import Roles from './pages/Roles';
@@ -78,6 +79,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="inquiries" element={<InquiriesQuotations />} />
         <Route path="quotations" element={<InquiriesQuotations />} />
+        <Route path="quotation-templates" element={<QuotationTemplates />} />
         <Route path="inquiry-sources" element={<InquirySources />} />
         <Route path="crm" element={<CRM />} />
         <Route path="follow-ups" element={<FollowUps />} />
