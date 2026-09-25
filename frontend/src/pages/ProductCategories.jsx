@@ -60,7 +60,7 @@ export default function ProductCategories() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Product Categories" description="Categories a product can belong to (e.g. Digiset, Kirloskar – Dewas)." />
+      <PageHeader title="Product Categories" description="Categories a product can belong to (DEWAS, WADI, DIGISET)." />
 
       {canManage ? (
         <form

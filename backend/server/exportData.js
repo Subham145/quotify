@@ -13,6 +13,7 @@ const TABLES = [
   'inquiry_sources',
   'product_categories',
   'product_groups',
+  'product_subgroups',
   'products',
   'customers',
   'company_settings',

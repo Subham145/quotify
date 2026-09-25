@@ -19,6 +19,7 @@ import { baerlocherTemplate } from './templates/baerlocherTemplate.js';
 import { choithramTemplate } from './templates/choithramTemplate.js';
 import { greavesTemplate } from './templates/greavesTemplate.js';
 import { dewasTemplate } from './templates/dewasTemplate.js';
+import { digisetTemplate } from './templates/digisetTemplate.js';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,7 +47,7 @@ if (process.env.MONGODB_URI) {
 }
 
 const app = express();
-const PORT = Number(process.env.API_PORT || process.env.PORT || 4000);
+const PORT = Number(process.env.API_PORT || process.env.PORT || 4050);
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
@@ -63,7 +64,12 @@ app.use('/api/product-categories', requireAuth, requireResource('products'));
 app.use('/api/inquiry-sources', requireAuth, requireResource('inquiries'));
 app.use('/api/inquiries', requireAuth, requireResource('inquiries'));
 app.use('/api/crm', requireAuth, requireResource('crm'));
-app.use('/api/quotations',(req,res,next)=>{if(req.path.endsWith('/pdf')){return next();}requireAuth(req,res,()=>requireResource('quotations')(req,res,next));});
+app.use('/api/quotations', (req, res, next) => {
+  if (req.path.endsWith('/pdf') || req.path.endsWith('/preview')) {
+    return next();
+  }
+  requireAuth(req, res, () => requireResource('quotations')(req, res, next));
+});
 app.use('/api/customers', requireAuth, requireResource('customers'));
 app.use('/api/product-groups', requireAuth, requireResource('product_groups'));
 app.use('/api/product-subgroups',requireAuth,requireResource('product_groups'));
@@ -649,68 +655,40 @@ app.get('/api/product-groups', requireAuth, (_req, res) => {
 });
   // PRODUCT SUBGROUPS
 
-app.get('/api/product-subgroups',
-requireAuth,
-(req,res)=>{
-
-const rows =
-db.prepare(
-`
-SELECT
-s.*,
-g.group_name
-
-FROM product_subgroups s
-
-LEFT JOIN product_groups g
-ON g.id=s.group_id
-
-ORDER BY s.id DESC
-`
-).all();
-
-res.json(rows);
-
+app.get('/api/product-subgroups', requireAuth, (req, res) => {
+  const groupId = req.query.group_id ? Number(req.query.group_id) : null;
+  const sql = groupId
+    ? `SELECT s.*, g.group_name FROM product_subgroups s LEFT JOIN product_groups g ON g.id = s.group_id WHERE s.group_id = ? ORDER BY s.id DESC`
+    : `SELECT s.*, g.group_name FROM product_subgroups s LEFT JOIN product_groups g ON g.id = s.group_id ORDER BY s.id DESC`;
+  const rows = groupId ? db.prepare(sql).all(groupId) : db.prepare(sql).all();
+  res.json(rows);
 });
 
+app.post('/api/product-subgroups', requireAuth, (req, res) => {
+  const { subgroup_name, group_id } = req.body || {};
+  if (!subgroup_name || !group_id) {
+    return res.status(400).json({ message: 'subgroup_name and group_id required' });
+  }
 
-app.post(
-'/api/product-subgroups',
-requireAuth,
-(req,res)=>{
+  const r = db.prepare(`
+    INSERT INTO product_subgroups (subgroup_name, group_id, is_active)
+    VALUES (?, ?, 1)
+  `).run(subgroup_name, Number(group_id));
 
-const {
-subgroup_name,
-group_id
-}=req.body;
-
-const r=
-db.prepare(
-`
-INSERT INTO
-product_subgroups
-(
-subgroup_name,
-group_id,
-is_active
-)
-
-VALUES
-(?,?,1)
-`
-)
-
-.run(
-subgroup_name,
-group_id
-);
-
-res.json({
-
-id:r.lastInsertRowid
-
+  res.json({ id: r.lastInsertRowid, subgroup_name, group_id: Number(group_id), is_active: 1 });
 });
 
+app.patch('/api/product-subgroups/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const { subgroup_name, group_id, is_active } = req.body || {};
+  db.prepare(`
+    UPDATE product_subgroups
+    SET subgroup_name = COALESCE(?, subgroup_name),
+        group_id = COALESCE(?, group_id),
+        is_active = COALESCE(?, is_active)
+    WHERE id = ?
+  `).run(subgroup_name, group_id ? Number(group_id) : null, typeof is_active === 'number' ? is_active : null, id);
+  res.json(getById('product_subgroups', id));
 });
 
 
@@ -1556,8 +1534,18 @@ app.post('/api/quotations', requireAuth, (req, res) => {
           freight_terms,
           availability_terms,
           taxes_terms,
-          validity_terms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          validity_terms,
+          panel_type,
+          warranty_terms,
+          insurance_terms,
+          loading_terms,
+          installation_terms,
+          permission_terms,
+          statutory_terms,
+          force_majeure_terms,
+          arbitration_terms,
+          cancellation_terms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         quotationNumber,
@@ -1580,12 +1568,22 @@ app.post('/api/quotations', requireAuth, (req, res) => {
         p.head || '',
         p.sales_person_name !== undefined && p.sales_person_name !== null ? p.sales_person_name : '',
         p.sales_person_phone !== undefined && p.sales_person_phone !== null ? p.sales_person_phone : '',
-        p.delivery_terms || 'Ex Godown',
-        p.payment_terms || '100% advance',
-        p.freight_terms || 'To Pay',
+        p.delivery_terms !== undefined ? p.delivery_terms : 'Ex Godown',
+        p.payment_terms !== undefined ? p.payment_terms : (category === 'DIGISET' ? '-30% advance along with the order and balance 70% against Proforma Invoice prior to dispatch of set from principal’s plant.' : '100% advance'),
+        p.freight_terms !== undefined ? p.freight_terms : (category === 'DIGISET' ? '-Freight & Transit Insurance up-to site at actual is INCLUDED in above price.' : 'To Pay'),
         p.availability_terms || 'Ex-Stock / 2-3 Weeks',
-        p.taxes_terms || 'GST 18% Extra',
-        p.validity_terms || '30 Days'
+        p.taxes_terms !== undefined ? p.taxes_terms : '-GST@18% shall be charged extra in the above price.',
+        p.validity_terms !== undefined ? p.validity_terms : '- The offer is valid for 30 Days.',
+        p.panel_type || (category === 'DIGISET' ? 'Both (Standard / Automatic)' : ''),
+        p.warranty_terms !== undefined ? p.warranty_terms : (category === 'DIGISET' ? '5 Years warranty / 5000 hours subject to warranty document attached.' : ''),
+        p.insurance_terms !== undefined ? p.insurance_terms : (category === 'DIGISET' ? '-Freight & Transit Insurance up-to site at actual is INCLUDED in above price.' : ''),
+        p.loading_terms !== undefined ? p.loading_terms : (category === 'DIGISET' ? '– To be done by client.' : ''),
+        p.installation_terms !== undefined ? p.installation_terms : (category === 'DIGISET' ? '– In client’s scope, i.e. unloading of DG set, It’s Placement on platform, Preparation of platform, four numbers of dedicated earthing, cabling with its lugs etc. However, commissioning shall be done by us free of charge after you complete the installation work. Please note that the DG set must be commissioned within 6 months time from the date of our invoice otherwise DG Set will have to undergo a chargeable revalidation by service dealer prior to commissioning.' : ''),
+        p.permission_terms !== undefined ? p.permission_terms : (category === 'DIGISET' ? '– All necessary legal requirements / permissions should be obtained by the Buyer.' : ''),
+        p.statutory_terms !== undefined ? p.statutory_terms : (category === 'DIGISET' ? '- Presently the above taxes and duties are applicable. However, if there is any change in the taxes and duties or if any fresh taxes and duties are levied by central, state or local government the same shall be applicable at the time of invoicing to your account.' : ''),
+        p.force_majeure_terms !== undefined ? p.force_majeure_terms : (category === 'DIGISET' ? '- The offer shall be subjected to force majeure clause.' : ''),
+        p.arbitration_terms !== undefined ? p.arbitration_terms : (category === 'DIGISET' ? '- The venue of arbitration shall be INDORE for any disputes or differences arising under the terms of contract placed on the company.' : ''),
+        p.cancellation_terms !== undefined ? p.cancellation_terms : (category === 'DIGISET' ? '- In case of order cancellation 10% of total value will be levied.' : '')
       );
 
     const insertItem = db.prepare(
@@ -1668,6 +1666,16 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           availability_terms = COALESCE(?, availability_terms),
           taxes_terms = COALESCE(?, taxes_terms),
           validity_terms = COALESCE(?, validity_terms),
+          panel_type = COALESCE(?, panel_type),
+          warranty_terms = COALESCE(?, warranty_terms),
+          insurance_terms = COALESCE(?, insurance_terms),
+          loading_terms = COALESCE(?, loading_terms),
+          installation_terms = COALESCE(?, installation_terms),
+          permission_terms = COALESCE(?, permission_terms),
+          statutory_terms = COALESCE(?, statutory_terms),
+          force_majeure_terms = COALESCE(?, force_majeure_terms),
+          arbitration_terms = COALESCE(?, arbitration_terms),
+          cancellation_terms = COALESCE(?, cancellation_terms),
           subtotal = ?,
           total_discount = ?,
           total_gst = ?,
@@ -1695,6 +1703,16 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
         p.availability_terms,
         p.taxes_terms,
         p.validity_terms,
+        p.panel_type !== undefined ? p.panel_type : null,
+        p.warranty_terms !== undefined ? p.warranty_terms : null,
+        p.insurance_terms !== undefined ? p.insurance_terms : null,
+        p.loading_terms !== undefined ? p.loading_terms : null,
+        p.installation_terms !== undefined ? p.installation_terms : null,
+        p.permission_terms !== undefined ? p.permission_terms : null,
+        p.statutory_terms !== undefined ? p.statutory_terms : null,
+        p.force_majeure_terms !== undefined ? p.force_majeure_terms : null,
+        p.arbitration_terms !== undefined ? p.arbitration_terms : null,
+        p.cancellation_terms !== undefined ? p.cancellation_terms : null,
         totals.subtotal,
         totals.totalDiscount,
         totals.totalGst,
@@ -1768,7 +1786,17 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           freight_terms = COALESCE(?, freight_terms),
           availability_terms = COALESCE(?, availability_terms),
           taxes_terms = COALESCE(?, taxes_terms),
-          validity_terms = COALESCE(?, validity_terms)
+          validity_terms = COALESCE(?, validity_terms),
+          panel_type = COALESCE(?, panel_type),
+          warranty_terms = COALESCE(?, warranty_terms),
+          insurance_terms = COALESCE(?, insurance_terms),
+          loading_terms = COALESCE(?, loading_terms),
+          installation_terms = COALESCE(?, installation_terms),
+          permission_terms = COALESCE(?, permission_terms),
+          statutory_terms = COALESCE(?, statutory_terms),
+          force_majeure_terms = COALESCE(?, force_majeure_terms),
+          arbitration_terms = COALESCE(?, arbitration_terms),
+          cancellation_terms = COALESCE(?, cancellation_terms)
         WHERE id = ?`
       ).run(
         p.customer_id,
@@ -1792,6 +1820,16 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
         p.availability_terms,
         p.taxes_terms,
         p.validity_terms,
+        p.panel_type !== undefined ? p.panel_type : null,
+        p.warranty_terms !== undefined ? p.warranty_terms : null,
+        p.insurance_terms !== undefined ? p.insurance_terms : null,
+        p.loading_terms !== undefined ? p.loading_terms : null,
+        p.installation_terms !== undefined ? p.installation_terms : null,
+        p.permission_terms !== undefined ? p.permission_terms : null,
+        p.statutory_terms !== undefined ? p.statutory_terms : null,
+        p.force_majeure_terms !== undefined ? p.force_majeure_terms : null,
+        p.arbitration_terms !== undefined ? p.arbitration_terms : null,
+        p.cancellation_terms !== undefined ? p.cancellation_terms : null,
         id
       );
     }
@@ -2185,60 +2223,6 @@ app.post('/api/invoices/:id/payments', requireAuth, (req, res) => {
   }
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ message: 'Internal server error' });
-});
-
-app.get('/api/quotations/:id/pdf', async (req,res)=>{
-
-const id=Number(req.params.id);
-
-const quotation=db
-.prepare(
-'SELECT * FROM quotations WHERE id=?'
-)
-.get(id);
-
-if(!quotation){
-return res.status(404).json({
-message:'Quotation not found'
-});
-}
-
-const rawItems = db
-  .prepare(
-    `SELECT qi.*, p.product_name, p.code as product_code, p.category as product_category 
-     FROM quotation_items qi 
-     LEFT JOIN products p ON qi.product_id = p.id 
-     WHERE qi.quotation_id = ?`
-  )
-  .all(id);
-
-const items = rawItems.map((it) => {
-  let cf = {};
-  if (it.custom_fields) {
-    try {
-      cf = typeof it.custom_fields === 'string' ? JSON.parse(it.custom_fields) : it.custom_fields;
-    } catch (e) {
-      cf = {};
-    }
-  }
-  return {
-    ...it,
-    custom_fields: cf,
-    model: cf.model || cf.pump_model || it.product_name || it.description || it.model || '',
-    motor_hp: cf.motor_hp || cf.hp || cf.power || it.motor_hp || it.hp || '',
-    head: cf.head || it.head || quotation.head || '',
-    flow_rate: cf.flow_rate || cf.flow || it.flow_rate || quotation.flow || '',
-    size: cf.suc_del_size || cf.size || cf.delivery_size || it.size || '',
-    solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || ''
-  };
-});
-
-const settings = db
-  .prepare('SELECT * FROM company_settings WHERE id = 1')
-  .get();
 
 const getAssetBase64 = (fileName) => {
   try {
@@ -2250,145 +2234,359 @@ const getAssetBase64 = (fileName) => {
   return '';
 };
 
-const templateData = {
-  quotation_number: quotation.quotation_number,
-  date: quotation.created_at,
-  customer_name: quotation.customer_name,
-  company_name: quotation.company_name,
-  customer_address: quotation.address || quotation.city || '',
-  kirloskar_logo: getAssetBase64('kirloskar-logo.jpg'),
-  pareek_logo: getAssetBase64('pareek-logo.jpg'),
-  greaves_logo: getAssetBase64('greaves-logo.jpg'),
-  attention_person: quotation.attention_person || '',
-  subject: quotation.subject || '',
-  offer_for: quotation.offer_for || quotation.subject || '',
-  application: quotation.application || '',
-  flow: quotation.flow || '',
-  head: quotation.head || '',
+function renderQuotationHtml(quotation, items, settings, templateQuery) {
+  const templateData = {
+    quotation_number: quotation.quotation_number || 'QTN-SAMPLE-01',
+    date: quotation.created_at || new Date().toISOString(),
+    customer_name: quotation.customer_name || 'Valued Customer',
+    company_name: quotation.company_name || quotation.customer_name || 'Customer Company Pvt Ltd',
+    customer_address: quotation.address || quotation.city || 'Indore, Madhya Pradesh',
+    kirloskar_logo: getAssetBase64('kirloskar-logo.jpg'),
+    pareek_logo: getAssetBase64('pareek-logo.jpg'),
+    greaves_logo: getAssetBase64('greaves-logo.jpg'),
+    attention_person: quotation.attention_person || 'Purchasing Manager',
+    subject: quotation.subject || '',
+    offer_for: quotation.offer_for || quotation.subject || '',
+    application: quotation.application || '',
+    flow: quotation.flow || '',
+    head: quotation.head || '',
 
-  items,
+    items: items || [],
 
-  subtotal: quotation.subtotal || 0,
-  total_discount: quotation.total_discount || 0,
-  total_gst: quotation.total_gst || 0,
-  total_amount: quotation.total_amount || 0,
+    subtotal: quotation.subtotal || 0,
+    total_discount: quotation.total_discount || 0,
+    total_gst: quotation.total_gst || 0,
+    total_amount: quotation.total_amount || 0,
 
-  notes: quotation.notes || '',
-  terms_conditions:
-    quotation.terms_conditions ||
-    settings?.quotation_terms ||
-    '',
-  sales_person_name: quotation.sales_person_name !== undefined && quotation.sales_person_name !== null ? quotation.sales_person_name : '',
-  sales_person_phone: quotation.sales_person_phone !== undefined && quotation.sales_person_phone !== null ? quotation.sales_person_phone : '',
-  delivery_terms: quotation.delivery_terms || 'Ex Godown',
-  payment_terms: quotation.payment_terms || '100% advance',
-  freight_terms: quotation.freight_terms || 'To Pay',
-  availability_terms: quotation.availability_terms || 'Ex-Stock / 2-3 Weeks',
-  taxes_terms: quotation.taxes_terms || 'GST 18% Extra',
-  validity_terms: quotation.validity_terms || '30 Days',
-  from_company_name: settings?.company_name || '',
-  from_address: settings?.address || '',
-  from_email: settings?.email || '',
-  from_phone: settings?.mobile || ''
-};
+    notes: quotation.notes || '',
+    terms_conditions:
+      quotation.terms_conditions ||
+      settings?.quotation_terms ||
+      '',
+    sales_person_name: quotation.sales_person_name !== undefined && quotation.sales_person_name !== null && quotation.sales_person_name !== '' ? quotation.sales_person_name : (settings?.sales_person_name || 'Pradeep Ghadge'),
+    sales_person_phone: quotation.sales_person_phone !== undefined && quotation.sales_person_phone !== null && quotation.sales_person_phone !== '' ? quotation.sales_person_phone : (settings?.mobile || '8269000495'),
+    sales_person_designation: quotation.sales_person_designation || 'Head- DG Division',
+    panel_type: quotation.panel_type || 'Both (Standard / Automatic)',
+    delivery_terms: quotation.delivery_terms || 'Ex Godown',
+    payment_terms: quotation.payment_terms || '-30% advance along with the order and balance 70% against Proforma Invoice prior to dispatch of set from principal’s plant.',
+    freight_terms: quotation.freight_terms || '-Freight & Transit Insurance up-to site at actual is INCLUDED in above price.',
+    availability_terms: quotation.availability_terms || 'Ex-Stock / 2-3 Weeks',
+    taxes_terms: quotation.taxes_terms || '-GST@18% shall be charged extra in the above price.',
+    validity_terms: quotation.validity_terms || '- The offer is valid for 30 Days.',
+    warranty_terms: quotation.warranty_terms || '5 Years warranty / 5000 hours subject to warranty document attached.',
+    insurance_terms: quotation.insurance_terms || '-Freight & Transit Insurance up-to site at actual is INCLUDED in above price.',
+    loading_terms: quotation.loading_terms || '– To be done by client.',
+    installation_terms: quotation.installation_terms || '– In client’s scope, i.e. unloading of DG set, It’s Placement on platform, Preparation of platform, four numbers of dedicated earthing, cabling with its lugs etc. However, commissioning shall be done by us free of charge after you complete the installation work. Please note that the DG set must be commissioned within 6 months time from the date of our invoice otherwise DG Set will have to undergo a chargeable revalidation by service dealer prior to commissioning.',
+    permission_terms: quotation.permission_terms || '– All necessary legal requirements / permissions should be obtained by the Buyer.',
+    statutory_terms: quotation.statutory_terms || '- Presently the above taxes and duties are applicable. However, if there is any change in the taxes and duties or if any fresh taxes and duties are levied by central, state or local government the same shall be applicable at the time of invoicing to your account.',
+    force_majeure_terms: quotation.force_majeure_terms || '- The offer shall be subjected to force majeure clause.',
+    arbitration_terms: quotation.arbitration_terms || '- The venue of arbitration shall be INDORE for any disputes or differences arising under the terms of contract placed on the company.',
+    cancellation_terms: quotation.cancellation_terms || '- In case of order cancellation 10% of total value will be levied.',
+    from_company_name: settings?.company_name || 'PAREEK POWER AND PUMPS PVT.LTD',
+    from_address: settings?.address || '101-A, Radhakrishna Complex, 10/1, Manoramaganj, A.B.Road, Indore- 452001',
+    from_email: settings?.email || 'sales@pareekgroup.com',
+    from_phone: settings?.mobile || '0731-4006381'
+  };
 
-let html;
-const template = req.query.template || (quotation.category?.toLowerCase() === 'dewas' ? 'dewas' : 'dewas');
+  const categoryUpper = (quotation.category || '').toUpperCase();
+  const templateName = (templateQuery || (categoryUpper === 'DIGISET' ? 'digiset' : (categoryUpper === 'WADI' ? 'wadi' : 'dewas'))).toLowerCase();
 
-switch (template.toLowerCase()) {
-  case 'dewas':
-    html = dewasTemplate(templateData);
-    break;
+  switch (templateName) {
+    case 'digiset':
+    case 'greaves':
+      return digisetTemplate(templateData);
 
-  case 'pump':
-    html = pumpTemplate(templateData);
-    break;
+    case 'dewas':
+    case 'wadi':
+      return dewasTemplate(templateData);
 
-  case 'motor':
-    html = motorTemplate(templateData);
-    break;
+    case 'pump':
+      return pumpTemplate(templateData);
 
-  case 'industrial':
-    html = industrialTemplate(templateData);
-    break;
+    case 'motor':
+      return motorTemplate(templateData);
 
-  case 'service':
-    html = serviceTemplate(templateData);
-    break;
+    case 'industrial':
+      return industrialTemplate(templateData);
 
-  case 'baerlocher':
-    html = baerlocherTemplate(templateData);
-    break;
+    case 'service':
+      return serviceTemplate(templateData);
 
-  case 'choithram':
-    html = choithramTemplate(templateData);
-    break;
+    case 'baerlocher':
+      return baerlocherTemplate(templateData);
 
-  case 'greaves':
-    html = greavesTemplate(templateData);
-    break;
+    case 'choithram':
+      return choithramTemplate(templateData);
 
-  default:
-    html = dewasTemplate(templateData);
+    default:
+      if (categoryUpper === 'DIGISET') {
+        return digisetTemplate(templateData);
+      }
+      return dewasTemplate(templateData);
+  }
 }
 
-const browser=
-await puppeteer.launch({
-
-headless:true,
-
-args:[
-'--no-sandbox',
-'--disable-setuid-sandbox'
-]
-
+// Endpoint to list all quotation templates
+app.get('/api/templates', (_req, res) => {
+  res.json([
+    {
+      id: 'DIGISET',
+      name: 'DIGISET - Greaves Power Silent D.G. Set Format',
+      category: 'DIGISET',
+      pages: 13,
+      description: 'Comprehensive 13-page DG Set quotation including Cover Letter, Pricing & Tech Specs, Commercial Terms, Bank RTGS Details, Company Strengths, Acoustic Enclosure & Controller Specs, Client List, and High-Res Posters.',
+      status: 'Active',
+      is_default_for: 'DIGISET'
+    },
+    {
+      id: 'DEWAS',
+      name: 'DEWAS - Kirloskar Pumps Standard Format',
+      category: 'DEWAS',
+      pages: 1,
+      description: 'Official Kirloskar Dewas pump quotation with Duty Parameters (Head, Flow, HP, Suction/Delivery Size, Solid Size), Itemized pricing, and Authorized Dealer sign-off.',
+      status: 'Active',
+      is_default_for: 'DEWAS'
+    },
+    {
+      id: 'WADI',
+      name: 'WADI - Kirloskar Industrial Pumps Format',
+      category: 'WADI',
+      pages: 1,
+      description: 'Standard Kirloskar Wadi format for heavy industrial pumps, sewage, and commercial applications.',
+      status: 'Active',
+      is_default_for: 'WADI'
+    }
+  ]);
 });
 
-const page=
-await browser.newPage();
+// Endpoint to preview template sample
+app.get('/api/templates/:category/preview', (req, res) => {
+  const category = req.params.category.toUpperCase();
+  const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get() || {};
 
-await page.setContent(
-html,
-{
-waitUntil:'networkidle0'
-}
-);
+  let sampleQuotation = {};
+  let sampleItems = [];
 
-const pdf=
-await page.pdf({
+  if (category === 'DIGISET') {
+    sampleQuotation = {
+      quotation_number: '4PL/DG/2026/089',
+      created_at: new Date().toISOString(),
+      customer_name: 'Empire House (D & D Venture)',
+      company_name: 'Empire House (D & D Venture)',
+      address: 'A.B. Road, Indore (M.P.)',
+      attention_person: 'Mr. Rajesh Sharma',
+      subject: 'QUOTATION FOR 125 KVA / 160 KVA 3 PHASE GREAVES COTTON STANDERD/AUTOMATIC CONTROL PANEL SILENT D.G. SET',
+      offer_for: '125 KVA / 160 KVA 3 Phase Greaves Cotton STANDERD / AUTOMATIC CONTROL PANEL Silent D.G. Set',
+      category: 'DIGISET',
+      panel_type: req.query.panel_type || 'Both (Standard / Automatic)',
+      sales_person_name: 'Pradeep Ghadge',
+      sales_person_phone: '8269000495',
+      sales_person_designation: 'Head- DG Division'
+    };
+    sampleItems = [
+      {
+        description: '125 KVA (4G11TAG26) 3Phase Greaves Silent DG Set',
+        hp: '125 KVA',
+        size: '3 Phase, 415V',
+        qty: 1,
+        rate: 1050000,
+        discounted_price: 1050000,
+        custom_fields: { hp: '125 KVA', size: '3 Phase (4G11TAG26)' }
+      },
+      {
+        description: '160 KVA (6G11TAG26) 3Phase Greaves Silent DG Set',
+        hp: '160 KVA',
+        size: '3 Phase, 415V',
+        qty: 1,
+        rate: 1476000,
+        discounted_price: 1476000,
+        custom_fields: { hp: '160 KVA', size: '3 Phase (6G11TAG26)' }
+      }
+    ];
+  } else if (category === 'WADI') {
+    sampleQuotation = {
+      quotation_number: '4PL/WADI/2026/042',
+      created_at: new Date().toISOString(),
+      customer_name: 'Tata International Ltd',
+      company_name: 'Tata International Ltd',
+      address: 'Industrial Area, Dewas (M.P.)',
+      attention_person: 'Mr. Alok Verma',
+      subject: 'QUOTATION FOR KIRLOSKAR INDUSTRIAL PUMP SET',
+      category: 'WADI',
+      head: '35',
+      flow: '40',
+      sales_person_name: 'Puneet Choudhary',
+      sales_person_phone: '9179076660'
+    };
+    sampleItems = [
+      {
+        model: 'DB 100/26',
+        hp: '25 HP',
+        head: '35 m',
+        flow: '40 lps',
+        size: '100 mm',
+        solid_size: '15 mm',
+        qty: 1,
+        rate: 145000,
+        discounted_price: 145000,
+        line_total: 145000
+      }
+    ];
+  } else {
+    sampleQuotation = {
+      quotation_number: '4PL/DWS/2026/104',
+      created_at: new Date().toISOString(),
+      customer_name: 'Satguru Agro Foods',
+      company_name: 'Satguru Agro Foods',
+      address: 'Sanwer Road Industrial Area, Indore (M.P.)',
+      attention_person: 'Mr. Manoj Gupta',
+      subject: 'OFFER FOR KIRLOSKAR SUBMERSIBLE / MONOBLOC PUMP SET',
+      category: 'DEWAS',
+      head: '45',
+      flow: '180 LPM',
+      sales_person_name: 'Puneet Choudhary',
+      sales_person_phone: '9179076660'
+    };
+    sampleItems = [
+      {
+        model: 'KOS-315+',
+        hp: '3.0 HP',
+        head: '45 m',
+        flow: '180 LPM',
+        size: '50 x 50 mm',
+        solid_size: '18 mm',
+        qty: 1,
+        rate: 34500,
+        discounted_price: 34500,
+        line_total: 34500
+      }
+    ];
+  }
 
-format:'A4',
-
-printBackground:true,
-
-margin:{
-top:'10mm',
-bottom:'10mm',
-left:'10mm',
-right:'10mm'
-}
-
+  const html = renderQuotationHtml(sampleQuotation, sampleItems, settings, category);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
 });
 
-await browser.close();
+// Endpoint to preview specific quotation as HTML
+app.get('/api/quotations/:id/preview', (req, res) => {
+  const id = Number(req.params.id);
+  const quotation = db.prepare('SELECT * FROM quotations WHERE id = ?').get(id);
+  if (!quotation) {
+    return res.status(404).send('<h3>Quotation not found</h3>');
+  }
 
-res.setHeader(
-'Content-Type',
-'application/pdf'
-);
+  const rawItems = db.prepare(`
+    SELECT qi.*, p.product_name, p.code as product_code, p.category as product_category 
+    FROM quotation_items qi 
+    LEFT JOIN products p ON qi.product_id = p.id 
+    WHERE qi.quotation_id = ?
+  `).all(id);
 
-res.setHeader(
-'Content-Disposition',
-`attachment; filename=${quotation.quotation_number}.pdf`
-);
+  const items = rawItems.map((it) => {
+    let cf = {};
+    if (it.custom_fields) {
+      try {
+        cf = typeof it.custom_fields === 'string' ? JSON.parse(it.custom_fields) : it.custom_fields;
+      } catch (e) {
+        cf = {};
+      }
+    }
+    return {
+      ...it,
+      custom_fields: cf,
+      model: cf.model || cf.pump_model || it.product_name || it.description || it.model || '',
+      motor_hp: cf.motor_hp || cf.hp || cf.power || it.motor_hp || it.hp || '',
+      head: cf.head || it.head || quotation.head || '',
+      flow_rate: cf.flow_rate || cf.flow || it.flow_rate || quotation.flow || '',
+      size: cf.suc_del_size || cf.size || cf.delivery_size || it.size || '',
+      solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || ''
+    };
+  });
 
-res.setHeader(
-'Content-Length',
-pdf.length
-);
+  const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get();
+  const html = renderQuotationHtml(quotation, items, settings, req.query.template);
 
-res.end(pdf,'binary');
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
 
+app.get('/api/quotations/:id/pdf', async (req, res) => {
+  const id = Number(req.params.id);
+
+  const quotation = db.prepare('SELECT * FROM quotations WHERE id=?').get(id);
+
+  if (!quotation) {
+    return res.status(404).json({
+      message: 'Quotation not found'
+    });
+  }
+
+  const rawItems = db
+    .prepare(
+      `SELECT qi.*, p.product_name, p.code as product_code, p.category as product_category 
+       FROM quotation_items qi 
+       LEFT JOIN products p ON qi.product_id = p.id 
+       WHERE qi.quotation_id = ?`
+    )
+    .all(id);
+
+  const items = rawItems.map((it) => {
+    let cf = {};
+    if (it.custom_fields) {
+      try {
+        cf = typeof it.custom_fields === 'string' ? JSON.parse(it.custom_fields) : it.custom_fields;
+      } catch (e) {
+        cf = {};
+      }
+    }
+    return {
+      ...it,
+      custom_fields: cf,
+      model: cf.model || cf.pump_model || it.product_name || it.description || it.model || '',
+      motor_hp: cf.motor_hp || cf.hp || cf.power || it.motor_hp || it.hp || '',
+      head: cf.head || it.head || quotation.head || '',
+      flow_rate: cf.flow_rate || cf.flow || it.flow_rate || quotation.flow || '',
+      size: cf.suc_del_size || cf.size || cf.delivery_size || it.size || '',
+      solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || ''
+    };
+  });
+
+  const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get();
+  const html = renderQuotationHtml(quotation, items, settings, req.query.template);
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+
+  const page = await browser.newPage();
+
+  await page.setContent(html, {
+    waitUntil: 'networkidle0'
+  });
+
+  const pdf = await page.pdf({
+    format: 'A4',
+    printBackground: true,
+    margin: {
+      top: '10mm',
+      bottom: '10mm',
+      left: '10mm',
+      right: '10mm'
+    }
+  });
+
+  await browser.close();
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename=${quotation.quotation_number || 'Quotation'}.pdf`
+  );
+  res.setHeader('Content-Length', pdf.length);
+
+  res.end(pdf, 'binary');
 });
 
 

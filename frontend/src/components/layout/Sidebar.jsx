@@ -17,6 +17,7 @@ import {
   UserCog,
   ShieldCheck,
   Settings,
+  FileText,
   Sparkles,
 } from 'lucide-react';
 
@@ -32,6 +33,7 @@ const navSections = [
     title: 'Sales & CRM',
     items: [
       { label: 'Inquiries & Quotations', path: '/inquiries', module: 'inquiries', icon: FileSpreadsheet },
+      { label: 'Quotation Templates', path: '/quotation-templates', module: 'inquiries', icon: FileText },
       { label: 'CRM Leads', path: '/crm', module: 'crm', icon: TrendingUp },
       { label: 'Follow-ups', path: '/follow-ups', module: 'follow_ups', icon: CalendarCheck },
       { label: 'Customers', path: '/customers', module: 'customers', icon: Users },
