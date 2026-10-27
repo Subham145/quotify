@@ -6,6 +6,7 @@ import { api, getApiUrl } from '../api/http';
 import StatusBadge from '../components/shared/StatusBadge';
 import { useAuth } from '../lib/AuthContext';
 import { canAccess, isManager } from '../lib/permissions';
+import WadiTemplateSelector from '../components/quotations/WadiTemplateSelector';
 
 function ProductSearchInput({ products = [], onSelect, currentModel = '' }) {
   const [query, setQuery] = useState('');
@@ -509,6 +510,10 @@ export default function InquiriesQuotations() {
     head: '',
     status: 'draft',
     category: 'DEWAS',
+    template_type: 'wadi_split_case',
+    material_construction: '',
+    scope_of_supply: '',
+    installation_note: '',
     sales_person_name: 'Puneet Choudhary',
     sales_person_phone: '9179076660',
     delivery_terms: 'Ex Godown',
@@ -518,6 +523,7 @@ export default function InquiriesQuotations() {
       {
         description: '',
         model: '',
+        application: '',
         hp: '',
         head: '',
         flow: '',
@@ -808,6 +814,10 @@ export default function InquiriesQuotations() {
       if (qData) {
         setEditingQuotation({
           ...qData,
+          template_type: qData.template_type || (qData.category === 'WADI' ? 'wadi_split_case' : ''),
+          material_construction: qData.material_construction || '',
+          scope_of_supply: qData.scope_of_supply || '',
+          installation_note: qData.installation_note || '',
           sales_person_name: qData.sales_person_name !== undefined && qData.sales_person_name !== null && qData.sales_person_name !== '' ? qData.sales_person_name : (qData.category === 'DIGISET' ? 'Pradeep Ghadge' : 'Puneet Choudhary'),
           sales_person_phone: qData.sales_person_phone !== undefined && qData.sales_person_phone !== null && qData.sales_person_phone !== '' ? qData.sales_person_phone : (qData.category === 'DIGISET' ? '8269000495' : '9179076660'),
           panel_type: qData.panel_type || (qData.category === 'DIGISET' ? 'Both (Standard / Automatic)' : ''),
@@ -837,6 +847,7 @@ export default function InquiriesQuotations() {
             return {
               description: it.description || '',
               model: it.model || cf.model || '',
+              application: it.application || cf.application || '',
               hp: it.motor_hp || it.hp || cf.motor_hp || cf.hp || '',
               head: it.head || cf.head || '',
               flow: it.flow_rate || it.flow || cf.flow_rate || cf.flow || '',
@@ -1233,7 +1244,13 @@ setActionMessage(
           className="rounded border border-indigo-500 px-2 py-1 text-xs text-indigo-600"
           onClick={() => {
             setSelectedQuotationId(q.id);
-            setSelectedTemplate('dewas');
+            if (q.category === 'WADI') {
+              setSelectedTemplate(q.template_type || 'wadi_split_case');
+            } else if (q.category === 'DIGISET') {
+              setSelectedTemplate('digiset');
+            } else {
+              setSelectedTemplate('dewas');
+            }
             setShowTemplateModal(true);
           }}
         >
@@ -1777,6 +1794,26 @@ value={p.product_name}
     />
   )}
 
+  {/* WADI 4-Template Selection */}
+  {quotationForm.category === 'WADI' && (
+    <WadiTemplateSelector
+      selectedTemplateId={quotationForm.template_type || 'wadi_split_case'}
+      onSelectTemplate={(tmplId, defaults) => {
+        setQuotationForm((prev) => ({
+          ...prev,
+          template_type: tmplId,
+          material_construction: defaults.material_construction !== undefined ? defaults.material_construction : prev.material_construction,
+          scope_of_supply: defaults.scope_of_supply !== undefined ? defaults.scope_of_supply : prev.scope_of_supply,
+          installation_note: defaults.installation_note !== undefined ? defaults.installation_note : prev.installation_note,
+          sales_person_name: defaults.sales_person_name || prev.sales_person_name,
+          sales_person_phone: defaults.sales_person_phone || prev.sales_person_phone,
+        }));
+      }}
+      values={quotationForm}
+      onChangeField={(field, val) => setQuotationForm((prev) => ({ ...prev, [field]: val }))}
+    />
+  )}
+
   {/* Line Item Details Section */}
   <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
@@ -1909,49 +1946,44 @@ value={p.product_name}
 
               {quotationForm.category === 'WADI' && (
                 <>
+                  {(quotationForm.template_type === 'wadi_fire_fighting' || quotationForm.template_type === 'wadi_fire_fighting_moc') && (
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Application</label>
+                      <input
+                        className="w-full rounded border p-2 text-xs font-semibold text-slate-800"
+                        placeholder="e.g. Main Pump / Diesel Engine Pump / Jockey Pump"
+                        value={item.application || ''}
+                        onChange={(e) => updateItem(idx, 'application', e.target.value)}
+                      />
+                    </div>
+                  )}
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Pump Model</label>
+                    <label className="text-xs font-medium text-slate-600">Pump Model &amp; Description</label>
                     <input
                       className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. DB 100/26"
+                      placeholder="e.g. UP 250/38 or DB 80/20xe"
                       value={item.model || ''}
                       onChange={(e) => updateItem(idx, 'model', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Delivery Size</label>
+                    <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
                     <input
                       className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 100 mm"
-                      value={item.size || ''}
-                      onChange={(e) => updateItem(idx, 'size', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Pump Head</label>
-                    <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 35 m"
+                      placeholder="e.g. 45 m / 100 m"
                       value={item.head || ''}
                       onChange={(e) => updateItem(idx, 'head', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Discharge / Flow</label>
+                    <label className="text-xs font-medium text-slate-600">
+                      Flow ({quotationForm.template_type === 'wadi_split_case' ? 'LPS' : (quotationForm.template_type === 'wadi_end_suction' ? 'm3/h' : 'm3/hr')})
+                    </label>
                     <input
                       className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 40 lps"
+                      placeholder={quotationForm.template_type === 'wadi_split_case' ? 'e.g. 160 LPS' : (quotationForm.template_type === 'wadi_end_suction' ? 'e.g. 130 m3/h' : 'e.g. 273 m3/hr')}
                       value={item.flow || ''}
                       onChange={(e) => updateItem(idx, 'flow', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Material (MOC)</label>
-                    <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. CI / Bronze"
-                      value={item.hp || ''}
-                      onChange={(e) => updateItem(idx, 'hp', e.target.value)}
                     />
                   </div>
                 </>
@@ -2380,14 +2412,23 @@ Cancel
       </h2>
 
       <select
-        className="mb-4 w-full rounded border p-2"
+        className="mb-4 w-full rounded border p-2 text-xs font-semibold"
         value={selectedTemplate}
         onChange={(e) => setSelectedTemplate(e.target.value)}
       >
-        <option value="dewas">Dewas (Kirloskar Pumps / Commercial Offer)</option>
-        <option value="baerlocher">Baerlocher (Techno-Commercial Offer)</option>
-        <option value="choithram">Choithram School (Submersible Pump)</option>
-        <option value="greaves">Greaves (DG Set / CRM 1-Page)</option>
+        <optgroup label="WADI Pump Templates (Official 4 Formats)">
+          <option value="wadi_split_case">WADI 1: Horizontal Split Case (UP Series / LPS / G S Sayan)</option>
+          <option value="wadi_fire_fighting">WADI 2: Fire Fighting Pump Set (Greaves Engine / Pradeep Ghadge)</option>
+          <option value="wadi_end_suction">WADI 3: End Suction Pump Set (Single Page / m3/h / Puneet C.)</option>
+          <option value="wadi_fire_fighting_moc">WADI 4: Fire Fighting Pump Set (MOC & Scope / Puneet C.)</option>
+        </optgroup>
+        <optgroup label="Other Quotation Formats">
+          <option value="dewas">Dewas (Kirloskar Pumps / Commercial Offer)</option>
+          <option value="digiset">Digiset (DG Set with Technical Annexures)</option>
+          <option value="baerlocher">Baerlocher (Techno-Commercial Offer)</option>
+          <option value="choithram">Choithram School (Submersible Pump)</option>
+          <option value="greaves">Greaves (DG Set / CRM 1-Page)</option>
+        </optgroup>
       </select>
 
       <div className="flex justify-end gap-2">
@@ -2572,6 +2613,26 @@ Cancel
         />
       )}
 
+      {/* WADI 4-Template Selection inside Edit Modal */}
+      {(editingQuotation.category || '').toUpperCase().includes('WADI') && (
+        <WadiTemplateSelector
+          selectedTemplateId={editingQuotation.template_type || 'wadi_split_case'}
+          onSelectTemplate={(tmplId, defaults) => {
+            setEditingQuotation((prev) => ({
+              ...prev,
+              template_type: tmplId,
+              material_construction: defaults.material_construction !== undefined ? defaults.material_construction : prev.material_construction,
+              scope_of_supply: defaults.scope_of_supply !== undefined ? defaults.scope_of_supply : prev.scope_of_supply,
+              installation_note: defaults.installation_note !== undefined ? defaults.installation_note : prev.installation_note,
+              sales_person_name: defaults.sales_person_name || prev.sales_person_name,
+              sales_person_phone: defaults.sales_person_phone || prev.sales_person_phone,
+            }));
+          }}
+          values={editingQuotation}
+          onChangeField={(field, val) => setEditingQuotation((prev) => ({ ...prev, [field]: val }))}
+        />
+      )}
+
       {/* Editable Line Items Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -2687,49 +2748,44 @@ Cancel
 
                   {editingQuotation.category === 'WADI' && (
                     <>
+                      {(editingQuotation.template_type === 'wadi_fire_fighting' || editingQuotation.template_type === 'wadi_fire_fighting_moc') && (
+                        <div>
+                          <label className="text-xs font-medium text-slate-600">Application</label>
+                          <input
+                            className="w-full rounded border p-2 text-xs font-semibold text-slate-800"
+                            placeholder="e.g. Main Pump / Diesel Engine Pump / Jockey Pump"
+                            value={item.application || ''}
+                            onChange={(e) => updateEditQuotationItem(idx, 'application', e.target.value)}
+                          />
+                        </div>
+                      )}
                       <div>
-                        <label className="text-xs font-medium text-slate-600">Pump Model</label>
+                        <label className="text-xs font-medium text-slate-600">Pump Model &amp; Description</label>
                         <input
                           className="w-full rounded border p-2 text-xs"
-                          placeholder="Model"
+                          placeholder="e.g. UP 250/38 or DB 80/20xe"
                           value={item.model || ''}
                           onChange={(e) => updateEditQuotationItem(idx, 'model', e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-slate-600">Delivery Size</label>
+                        <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
                         <input
                           className="w-full rounded border p-2 text-xs"
-                          placeholder="Size"
-                          value={item.size || ''}
-                          onChange={(e) => updateEditQuotationItem(idx, 'size', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">Pump Head</label>
-                        <input
-                          className="w-full rounded border p-2 text-xs"
-                          placeholder="Head"
+                          placeholder="e.g. 45 m / 100 m"
                           value={item.head || ''}
                           onChange={(e) => updateEditQuotationItem(idx, 'head', e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-slate-600">Discharge / Flow</label>
+                        <label className="text-xs font-medium text-slate-600">
+                          Flow ({editingQuotation.template_type === 'wadi_split_case' ? 'LPS' : (editingQuotation.template_type === 'wadi_end_suction' ? 'm3/h' : 'm3/hr')})
+                        </label>
                         <input
                           className="w-full rounded border p-2 text-xs"
-                          placeholder="Flow"
+                          placeholder={editingQuotation.template_type === 'wadi_split_case' ? 'e.g. 160 LPS' : (editingQuotation.template_type === 'wadi_end_suction' ? 'e.g. 130 m3/h' : 'e.g. 273 m3/hr')}
                           value={item.flow || ''}
                           onChange={(e) => updateEditQuotationItem(idx, 'flow', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">Material (MOC)</label>
-                        <input
-                          className="w-full rounded border p-2 text-xs"
-                          placeholder="MOC"
-                          value={item.hp || ''}
-                          onChange={(e) => updateEditQuotationItem(idx, 'hp', e.target.value)}
                         />
                       </div>
                     </>
@@ -2922,6 +2978,10 @@ Cancel
                 customer_name: editingQuotation.customer_name,
                 company_name: editingQuotation.company_name,
                 category: editingQuotation.category,
+                template_type: editingQuotation.template_type,
+                material_construction: editingQuotation.material_construction,
+                scope_of_supply: editingQuotation.scope_of_supply,
+                installation_note: editingQuotation.installation_note,
                 status: editingQuotation.status,
                 notes: editingQuotation.notes,
                 attention_person: editingQuotation.attention_person,
@@ -2949,6 +3009,7 @@ Cancel
                 items: (editingQuotation.items || []).map((it) => ({
                   description: it.description || it.model || '',
                   model: it.model || '',
+                  application: it.application || '',
                   motor_hp: it.hp || '',
                   head: it.head || '',
                   flow_rate: it.flow || '',

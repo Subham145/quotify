@@ -20,6 +20,7 @@ import { choithramTemplate } from './templates/choithramTemplate.js';
 import { greavesTemplate } from './templates/greavesTemplate.js';
 import { dewasTemplate } from './templates/dewasTemplate.js';
 import { digisetTemplate } from './templates/digisetTemplate.js';
+import { wadiTemplate, wadiSplitCaseTemplate, wadiFireFightingTemplate, wadiEndSuctionTemplate, wadiFireFightingMocTemplate } from './templates/wadiTemplates.js';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1544,8 +1545,11 @@ app.post('/api/quotations', requireAuth, (req, res) => {
           statutory_terms,
           force_majeure_terms,
           arbitration_terms,
-          cancellation_terms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          cancellation_terms,
+          material_construction,
+          scope_of_supply,
+          installation_note
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         quotationNumber,
@@ -1583,7 +1587,10 @@ app.post('/api/quotations', requireAuth, (req, res) => {
         p.statutory_terms !== undefined ? p.statutory_terms : (category === 'DIGISET' ? '- Presently the above taxes and duties are applicable. However, if there is any change in the taxes and duties or if any fresh taxes and duties are levied by central, state or local government the same shall be applicable at the time of invoicing to your account.' : ''),
         p.force_majeure_terms !== undefined ? p.force_majeure_terms : (category === 'DIGISET' ? '- The offer shall be subjected to force majeure clause.' : ''),
         p.arbitration_terms !== undefined ? p.arbitration_terms : (category === 'DIGISET' ? '- The venue of arbitration shall be INDORE for any disputes or differences arising under the terms of contract placed on the company.' : ''),
-        p.cancellation_terms !== undefined ? p.cancellation_terms : (category === 'DIGISET' ? '- In case of order cancellation 10% of total value will be levied.' : '')
+        p.cancellation_terms !== undefined ? p.cancellation_terms : (category === 'DIGISET' ? '- In case of order cancellation 10% of total value will be levied.' : ''),
+        p.material_construction !== undefined ? p.material_construction : null,
+        p.scope_of_supply !== undefined ? p.scope_of_supply : null,
+        p.installation_note !== undefined ? p.installation_note : null
       );
 
     const insertItem = db.prepare(
@@ -1601,8 +1608,9 @@ app.post('/api/quotations', requireAuth, (req, res) => {
         head,
         flow_rate,
         size,
-        custom_fields
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        custom_fields,
+        application
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     totals.items.forEach((item) => {
@@ -1624,7 +1632,8 @@ app.post('/api/quotations', requireAuth, (req, res) => {
         item.head || '',
         item.flow_rate || '',
         item.size || '',
-        customFieldsJson
+        customFieldsJson,
+        item.application || (item.custom_fields && item.custom_fields.application) || ''
       );
     });
 
@@ -1676,6 +1685,9 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           force_majeure_terms = COALESCE(?, force_majeure_terms),
           arbitration_terms = COALESCE(?, arbitration_terms),
           cancellation_terms = COALESCE(?, cancellation_terms),
+          material_construction = COALESCE(?, material_construction),
+          scope_of_supply = COALESCE(?, scope_of_supply),
+          installation_note = COALESCE(?, installation_note),
           subtotal = ?,
           total_discount = ?,
           total_gst = ?,
@@ -1713,6 +1725,9 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
         p.force_majeure_terms !== undefined ? p.force_majeure_terms : null,
         p.arbitration_terms !== undefined ? p.arbitration_terms : null,
         p.cancellation_terms !== undefined ? p.cancellation_terms : null,
+        p.material_construction !== undefined ? p.material_construction : null,
+        p.scope_of_supply !== undefined ? p.scope_of_supply : null,
+        p.installation_note !== undefined ? p.installation_note : null,
         totals.subtotal,
         totals.totalDiscount,
         totals.totalGst,
@@ -1737,8 +1752,9 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           head,
           flow_rate,
           size,
-          custom_fields
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          custom_fields,
+          application
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
 
       totals.items.forEach((item) => {
@@ -1760,7 +1776,8 @@ app.patch('/api/quotations/:id', requireAuth, (req, res) => {
           item.head || '',
           item.flow_rate || '',
           item.size || '',
-          customFieldsJson
+          customFieldsJson,
+          item.application || (item.custom_fields && item.custom_fields.application) || ''
         );
       });
     } else {
@@ -2250,6 +2267,10 @@ function renderQuotationHtml(quotation, items, settings, templateQuery) {
     application: quotation.application || '',
     flow: quotation.flow || '',
     head: quotation.head || '',
+    material_construction: quotation.material_construction || '',
+    scope_of_supply: quotation.scope_of_supply || '',
+    installation_note: quotation.installation_note || '',
+    template_type: quotation.template_type || '',
 
     items: items || [],
 
@@ -2289,7 +2310,11 @@ function renderQuotationHtml(quotation, items, settings, templateQuery) {
   };
 
   const categoryUpper = (quotation.category || '').toUpperCase();
-  const templateName = (templateQuery || (categoryUpper === 'DIGISET' ? 'digiset' : (categoryUpper === 'WADI' ? 'wadi' : 'dewas'))).toLowerCase();
+  const templateName = (
+    templateQuery ||
+    quotation.template_type ||
+    (categoryUpper === 'DIGISET' ? 'digiset' : (categoryUpper === 'WADI' ? 'wadi_split_case' : 'dewas'))
+  ).toLowerCase();
 
   switch (templateName) {
     case 'digiset':
@@ -2297,8 +2322,30 @@ function renderQuotationHtml(quotation, items, settings, templateQuery) {
       return digisetTemplate(templateData);
 
     case 'dewas':
-    case 'wadi':
       return dewasTemplate(templateData);
+
+    case 'wadi_1':
+    case 'wadi_split_case':
+    case 'split_case':
+      return wadiSplitCaseTemplate(templateData);
+
+    case 'wadi_2':
+    case 'wadi_fire_fighting':
+    case 'fire_fighting':
+      return wadiFireFightingTemplate(templateData);
+
+    case 'wadi_3':
+    case 'wadi_end_suction':
+    case 'end_suction':
+      return wadiEndSuctionTemplate(templateData);
+
+    case 'wadi_4':
+    case 'wadi_fire_fighting_moc':
+    case 'fire_fighting_moc':
+      return wadiFireFightingMocTemplate(templateData);
+
+    case 'wadi':
+      return wadiTemplate(templateData, quotation.template_type || 'wadi_split_case');
 
     case 'pump':
       return pumpTemplate(templateData);
@@ -2321,6 +2368,9 @@ function renderQuotationHtml(quotation, items, settings, templateQuery) {
     default:
       if (categoryUpper === 'DIGISET') {
         return digisetTemplate(templateData);
+      }
+      if (categoryUpper === 'WADI') {
+        return wadiTemplate(templateData, quotation.template_type || 'wadi_split_case');
       }
       return dewasTemplate(templateData);
   }
@@ -2348,26 +2398,51 @@ app.get('/api/templates', (_req, res) => {
       is_default_for: 'DEWAS'
     },
     {
-      id: 'WADI',
-      name: 'WADI - Kirloskar Industrial Pumps Format',
+      id: 'wadi_split_case',
+      name: 'WADI 1 - Horizontal Split Case Pump Set (UP Series / LPS)',
       category: 'WADI',
-      pages: 1,
-      description: 'Standard Kirloskar Wadi format for heavy industrial pumps, sewage, and commercial applications.',
+      pages: 2,
+      description: 'Techno-Commercial offer for Horizontal Split Case pump (UP Series) with Head & Flow in LPS, Material of Construction (UP Pump 01 MOC), and G S Sayan sign-off.',
       status: 'Active',
       is_default_for: 'WADI'
+    },
+    {
+      id: 'wadi_fire_fighting',
+      name: 'WADI 2 - Fire Fighting Pump Set (Greaves Engine & Scope of Supply)',
+      category: 'WADI',
+      pages: 2,
+      description: 'Techno-Commercial offer for Fire Fighting Pump Set (Main Pump, Diesel Engine Pump, Jockey Pump, Fuel Tank) with Greaves Engine, Scope of Supply, Commissioning clause, and Pradeep Ghadge sign-off.',
+      status: 'Active'
+    },
+    {
+      id: 'wadi_end_suction',
+      name: 'WADI 3 - End Suction Pump Set (Single Page / Flow in m3/h)',
+      category: 'WADI',
+      pages: 1,
+      description: 'Compact 1-Page Techno-Commercial offer for End Suction Pump with Flow in m3/h, Head in m, Installation Warning Note, 6 numbered commercial terms, and Puneet Choudhary sign-off.',
+      status: 'Active'
+    },
+    {
+      id: 'wadi_fire_fighting_moc',
+      name: 'WADI 4 - Fire Fighting Pump Set (With MOC & Installation Note)',
+      category: 'WADI',
+      pages: 2,
+      description: 'Techno-Commercial offer for Fire Fighting Pump Set with Material of Construction header (DB Pump 86-MOC), Scope Warning Note, and itemized Main/Diesel/Jockey pumps.',
+      status: 'Active'
     }
   ]);
 });
 
 // Endpoint to preview template sample
 app.get('/api/templates/:category/preview', (req, res) => {
-  const category = req.params.category.toUpperCase();
+  const categoryParam = req.params.category.toLowerCase();
+  const templateQuery = (req.query.template || categoryParam).toLowerCase();
   const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get() || {};
 
   let sampleQuotation = {};
   let sampleItems = [];
 
-  if (category === 'DIGISET') {
+  if (categoryParam === 'digiset') {
     sampleQuotation = {
       quotation_number: '4PL/DG/2026/089',
       created_at: new Date().toISOString(),
@@ -2403,35 +2478,199 @@ app.get('/api/templates/:category/preview', (req, res) => {
         custom_fields: { hp: '160 KVA', size: '3 Phase (6G11TAG26)' }
       }
     ];
-  } else if (category === 'WADI') {
-    sampleQuotation = {
-      quotation_number: '4PL/WADI/2026/042',
-      created_at: new Date().toISOString(),
-      customer_name: 'Tata International Ltd',
-      company_name: 'Tata International Ltd',
-      address: 'Industrial Area, Dewas (M.P.)',
-      attention_person: 'Mr. Alok Verma',
-      subject: 'QUOTATION FOR KIRLOSKAR INDUSTRIAL PUMP SET',
-      category: 'WADI',
-      head: '35',
-      flow: '40',
-      sales_person_name: 'Puneet Choudhary',
-      sales_person_phone: '9179076660'
-    };
-    sampleItems = [
-      {
-        model: 'DB 100/26',
-        hp: '25 HP',
-        head: '35 m',
-        flow: '40 lps',
-        size: '100 mm',
-        solid_size: '15 mm',
-        qty: 1,
-        rate: 145000,
-        discounted_price: 145000,
-        line_total: 145000
-      }
-    ];
+  } else if (categoryParam === 'wadi' || categoryParam.startsWith('wadi_')) {
+    const wadiSub = templateQuery;
+    if (wadiSub === 'wadi_fire_fighting' || wadiSub === 'wadi_2') {
+      sampleQuotation = {
+        quotation_number: '202607',
+        created_at: '2026-10-12',
+        customer_name: 'M/s. VE Commercial Vehicles Ltd.,',
+        company_name: 'M/s. VE Commercial Vehicles Ltd.,',
+        address: 'Narwar Dist- Ujjain',
+        attention_person: 'Mr. Dinesh Bisla',
+        subject: 'Kirloskar make Fire Fighting Pump Set.',
+        category: 'WADI',
+        template_type: 'wadi_fire_fighting',
+        material_construction: 'Diesel Engine Pump set – with Complete Pump set without accessories.',
+        scope_of_supply: 'Diesel Engine Pump Set Engine + Pump + Coupling + Coupling Guard Fitted on Suitable MS Base Frame.',
+        delivery_terms: 'Quoted prices net and FOR Dewas Naka Indore Godown.',
+        payment_terms: '30% payment advance along with PO and balance 70% payment against PI before dispatch of material.',
+        availability_terms: '14-16 weeks after receipt of your PO.',
+        warranty_terms: 'We offer the warranty of 12 months from the date of Invoice or against manufacturing or quality issues under standard operation as per the warranty clause.',
+        installation_terms: 'Installation of the pump set will be in your Scope and super vision of commissioning will be done by us free of charge for 1 day only.',
+        validity_terms: 'Our will be valid for 30 days only.',
+        sales_person_name: 'Pradeep Ghadge',
+        sales_person_phone: '82690-00495'
+      };
+      sampleItems = [
+        {
+          application: 'Main Pump',
+          flow_rate: '273',
+          head: '100',
+          model: 'Kirloskar make End Suction Pump CPHM 125/32_2900 (43 MOC) coupled with BBL/Kirloskar Make Fire Fighting 170 HP 3000 RPM motor on coupling and coupling guard with Gland Pack',
+          qty: '01',
+          rate: 791280,
+          line_total: 791280
+        },
+        {
+          application: 'Diesel Engine Pump',
+          flow_rate: '273',
+          head: '100',
+          model: 'Diesel Engine Fire Fighting Set comprising of Greaves make Diesel Engine (CPHM 125/32) 167 HP, 1800 RPM on base frame with coupling, Coupling guard & Gland Pack (43 MOC)',
+          qty: '01',
+          rate: 799680,
+          line_total: 799680
+        },
+        {
+          application: 'Jockey Pump',
+          flow_rate: '10.8',
+          head: '100',
+          model: 'Kirloskar make Vertical Inline Pump KCIL 10-14 (A MOC) coupled with BBL/Kirloskar Make Fire Fighting 5.5 KW 7.5 HP 3000 RPM motor on coupling and coupling guard with Mechanical Seal',
+          qty: '01',
+          rate: 119880,
+          line_total: 119880
+        },
+        {
+          application: 'Fuel Tank & Battery',
+          flow_rate: '',
+          head: '',
+          model: 'Fuel Tank & Battery and Battery Lead with Coolent',
+          qty: '01',
+          rate: 45000,
+          line_total: 45000
+        }
+      ];
+    } else if (wadiSub === 'wadi_end_suction' || wadiSub === 'wadi_3') {
+      sampleQuotation = {
+        quotation_number: '202606',
+        created_at: '2026-10-12',
+        customer_name: 'M/S Syncom Formulation (India) Ltd.',
+        company_name: 'M/S Syncom Formulation (India) Ltd.',
+        address: 'Pithampur,',
+        attention_person: 'Mr. Sumit Batham',
+        subject: 'Kirloskar make End Suction Pump set.',
+        category: 'WADI',
+        template_type: 'wadi_end_suction',
+        installation_note: 'Installation is not in our scope and accessories should be extra at actual',
+        availability_terms: '1 week after receipt of Your PO.',
+        payment_terms: '30% advance along with PO and balance 70% against PI before dispatch of material.',
+        taxes_terms: 'GST18% extra at actual.',
+        validity_terms: '18-Oct-2026.',
+        delivery_terms: 'Ex Our Godown, Dewas Naka Indore.',
+        freight_terms: 'To Pay.',
+        sales_person_name: 'Puneet Choudhary',
+        sales_person_phone: '91790-76660'
+      };
+      sampleItems = [
+        {
+          head: '55',
+          flow_rate: '130',
+          model: 'Kirloskar make End Suction Pump Model DB 65/20xe (86 MOC) coupled with BBL make 30 KW/40 HP/3000 RPM motor, (IE2 Efficiency) on Base Frame, Coupling & Coupling Guard With Mechanical Seal',
+          qty: '01',
+          rate: 184690,
+          line_total: 184690
+        }
+      ];
+    } else if (wadiSub === 'wadi_fire_fighting_moc' || wadiSub === 'wadi_4') {
+      sampleQuotation = {
+        quotation_number: '202608',
+        created_at: '2026-10-12',
+        customer_name: 'M/s. CONVENIENT FIRETECH.,',
+        company_name: 'M/s. CONVENIENT FIRETECH.,',
+        address: 'Indore',
+        attention_person: 'Mr. Ishaan',
+        subject: 'Kirloskar make Fire Fighting Pump Set.',
+        category: 'WADI',
+        template_type: 'wadi_fire_fighting_moc',
+        material_construction: 'DB Pump (86-MOC) - CI-Body / BR–Impeller / Shaft & Sleeve- 45C8 with Mechanical Seal<br>Diesel Engine Pump set (86 MOC) – with Complete Pump set',
+        installation_note: 'Installation is not in our scope and accessories should be extra at actual',
+        delivery_terms: 'Quoted prices net and FOR Dewas Naka Indore Godown.',
+        payment_terms: '30% payment advance along with PO and balance 70% payment against PI before dispatch of material.',
+        availability_terms: '3-4 weeks after receipt of your PO.',
+        warranty_terms: 'We offer the warranty of 12 months from the date of Invoice or against manufacturing or quality issues under standard operation as per the warranty clause.',
+        installation_terms: 'Installation of the pump set will be in your Scope and super vision of commissioning will be done by us free of charge for 1 day only.',
+        validity_terms: 'Our will be valid for 30 days only.',
+        sales_person_name: 'Puneet Choudhary',
+        sales_person_phone: '91790-76660'
+      };
+      sampleItems = [
+        {
+          application: 'Main Pump',
+          flow_rate: '137',
+          head: '50',
+          model: 'Kirloskar make End Suction Pump DB 80/20xe (86 MOC) coupled with BBL/Kirloskar Make Fire Fighting Pump 40 HP 3000 RPM motor on coupling and coupling guard with Mechanical Seal',
+          qty: '02',
+          rate: 196168,
+          line_total: 392336
+        },
+        {
+          application: 'Diesel Engine Pump',
+          flow_rate: '137',
+          head: '50',
+          model: 'Diesel Engine Fire Fighting Set comprising of Diesel Engine Model (KFE-E2659R-M86B) 45 HP, 2500 RPM on base frame with coupling, Coupling guard & Mechanical Seal (86 MOC)',
+          qty: '01',
+          rate: 326690,
+          line_total: 326690
+        },
+        {
+          application: 'Jockey Pump',
+          flow_rate: '10.8',
+          head: '100',
+          model: 'Kirloskar make Vertical Inline Pump KSIL 15-4 (C MOC) With 4 KW 5.5 HP 3000 RPM with Mechanical Seal (4 Stage) (65x65)',
+          qty: '02',
+          rate: 74016,
+          line_total: 148032
+        },
+        {
+          application: 'Fuel Tank & Battery',
+          flow_rate: '',
+          head: '',
+          model: 'Fuel Tank & Battery and Battery Lead with Coolant',
+          qty: '01',
+          rate: 30000,
+          line_total: 30000
+        }
+      ];
+    } else {
+      // Default: wadi_split_case (Template 1)
+      sampleQuotation = {
+        quotation_number: '202611',
+        created_at: '2026-10-16',
+        customer_name: 'M/s. M. P. AgriTech',
+        company_name: 'M/s. M. P. AgriTech',
+        address: 'Indore',
+        attention_person: 'Mr. Anil Raina Ji',
+        subject: 'Kirloskar make Horizontal Split Case Pump set.',
+        category: 'WADI',
+        template_type: 'wadi_split_case',
+        material_construction: 'UP Pump (01 MOC) – CI–Casing / CI-Impeller / Shaft – 40C8 With Gland Packed',
+        delivery_terms: 'Quoted prices net and FOR our Dewas Naka Godown Delivery.',
+        payment_terms: '100% payment advance along with PO against Proforma Invoice before dispatch of Material.',
+        availability_terms: '10 Days after receipt of your PO.',
+        warranty_terms: '12 months from the date of commissioning whichever is earlier as a special case related to any manufacturing or quality issues under standard operation as per the warranty clause.',
+        validity_terms: 'Our will be valid for 15 days only.',
+        sales_person_name: 'G S Sayan',
+        sales_person_phone: '9893276018'
+      };
+      sampleItems = [
+        {
+          head: '45',
+          flow_rate: '160',
+          model: 'Kirloskar make Horizontal Split Case Pump Model UP 250/38 (01 MOC) Bare Shaft Pump with Gland Pack',
+          qty: '01',
+          rate: 188980,
+          line_total: 188980
+        },
+        {
+          head: '',
+          flow_rate: '',
+          model: 'Base Frame MS Fabricated channel size 150×75 m.m + MS Coupling Guard + Coupling RB 198 Pin Bush Type',
+          qty: '01 Set',
+          rate: 34320,
+          line_total: 34320
+        }
+      ];
+    }
   } else {
     sampleQuotation = {
       quotation_number: '4PL/DWS/2026/104',
@@ -2463,7 +2702,7 @@ app.get('/api/templates/:category/preview', (req, res) => {
     ];
   }
 
-  const html = renderQuotationHtml(sampleQuotation, sampleItems, settings, category);
+  const html = renderQuotationHtml(sampleQuotation, sampleItems, settings, templateQuery || categoryParam);
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
 });
@@ -2500,7 +2739,8 @@ app.get('/api/quotations/:id/preview', (req, res) => {
       head: cf.head || it.head || quotation.head || '',
       flow_rate: cf.flow_rate || cf.flow || it.flow_rate || quotation.flow || '',
       size: cf.suc_del_size || cf.size || cf.delivery_size || it.size || '',
-      solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || ''
+      solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || '',
+      application: it.application || cf.application || ''
     };
   });
 
@@ -2548,7 +2788,8 @@ app.get('/api/quotations/:id/pdf', async (req, res) => {
       head: cf.head || it.head || quotation.head || '',
       flow_rate: cf.flow_rate || cf.flow || it.flow_rate || quotation.flow || '',
       size: cf.suc_del_size || cf.size || cf.delivery_size || it.size || '',
-      solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || ''
+      solid_size: cf.max_solid_size || cf.solid_size || it.solid_size || '',
+      application: it.application || cf.application || ''
     };
   });
 

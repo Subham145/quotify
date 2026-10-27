@@ -319,7 +319,10 @@ export function initDb() {
     'statutory_terms',
     'force_majeure_terms',
     'arbitration_terms',
-    'cancellation_terms'
+    'cancellation_terms',
+    'material_construction',
+    'scope_of_supply',
+    'installation_note'
   ];
   quotationColsToAdd.forEach((col) => {
     if (!quotationColumns.some((c) => c.name === col)) {
@@ -328,7 +331,7 @@ export function initDb() {
   });
 
   const quotationItemColumns = db.prepare('PRAGMA table_info(quotation_items)').all();
-  const itemColsToAdd = ['model', 'motor_hp', 'head', 'flow_rate', 'size', 'custom_fields'];
+  const itemColsToAdd = ['model', 'motor_hp', 'head', 'flow_rate', 'size', 'custom_fields', 'application'];
   itemColsToAdd.forEach((col) => {
     if (!quotationItemColumns.some((c) => c.name === col)) {
       db.exec(`ALTER TABLE quotation_items ADD COLUMN ${col} TEXT`);
