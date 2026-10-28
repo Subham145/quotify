@@ -4,8 +4,11 @@ import PageHeader from '../components/shared/PageHeader';
 import { api, getApiUrl } from '../api/http';
 import { FileText, Eye, CheckCircle2, ExternalLink, Layers, ShieldCheck, Building2, Zap, RefreshCw } from 'lucide-react';
 
+import { WADI_TEMPLATES, getWadiTemplate } from '../constants/wadiTemplates';
+
 export default function QuotationTemplates() {
   const [selectedCategory, setSelectedCategory] = useState('DIGISET');
+  const [selectedWadiTemplateId, setSelectedWadiTemplateId] = useState('wadi_split_case');
   const [panelType, setPanelType] = useState('Both (Standard / Automatic)');
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -13,6 +16,8 @@ export default function QuotationTemplates() {
     queryKey: ['quotation-templates'],
     queryFn: () => api('/templates'),
   });
+
+  const selectedWadiTemplate = getWadiTemplate(selectedWadiTemplateId);
 
   const categories = [
     {
@@ -55,22 +60,25 @@ export default function QuotationTemplates() {
     {
       id: 'WADI',
       name: 'WADI (Kirloskar Industrial)',
-      badge: '1 Page Industrial',
+      badge: '4 Official Templates',
       badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
       brand: 'Kirloskar Industrial Division',
       icon: Layers,
-      summary: 'Industrial pumping quotation format designed for heavy-duty, sewage, and high-discharge applications.',
-      sections: [
-        'Kirloskar Industrial Pumps Dual Branding',
-        'Suction/Delivery Size & Impeller Material Specifics',
-        'Commercial Terms & Advance Delivery Schedules',
-        'Authorized Dealer Stamp & Bank Account Reference'
-      ]
+      summary: selectedWadiTemplate.description,
+      sections: selectedWadiTemplate.sections
     }
   ];
 
   const currentCategoryInfo = categories.find((c) => c.id === selectedCategory) || categories[0];
-  const previewUrl = getApiUrl(`/templates/${selectedCategory}/preview?t=${refreshKey}${selectedCategory === 'DIGISET' ? `&panel_type=${encodeURIComponent(panelType)}` : ''}`);
+  const previewUrl = getApiUrl(
+    `/templates/${selectedCategory}/preview?t=${refreshKey}${
+      selectedCategory === 'DIGISET'
+        ? `&panel_type=${encodeURIComponent(panelType)}`
+        : selectedCategory === 'WADI'
+        ? `&template=${encodeURIComponent(selectedWadiTemplateId)}`
+        : ''
+    }`
+  );
 
   return (
     <div className="space-y-6 pb-12">
@@ -183,6 +191,29 @@ export default function QuotationTemplates() {
                     }`}
                   >
                     {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedCategory === 'WADI' && (
+              <div className="flex items-center rounded-lg border border-slate-200 bg-white p-1 shadow-xs">
+                <span className="text-[11px] font-bold text-slate-500 px-2">WADI Format:</span>
+                {WADI_TEMPLATES.map((tmpl) => (
+                  <button
+                    key={tmpl.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedWadiTemplateId(tmpl.id);
+                      setRefreshKey((k) => k + 1);
+                    }}
+                    className={`rounded-md px-2.5 py-1 text-xs font-bold transition-all ${
+                      selectedWadiTemplateId === tmpl.id
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title={tmpl.name}
+                  >
+                    Template {tmpl.number} ({tmpl.flowUnit})
                   </button>
                 ))}
               </div>

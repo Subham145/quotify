@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import DataTable from '../components/shared/DataTable';
 import PageHeader from '../components/shared/PageHeader';
 import { api, getApiUrl } from '../api/http';
+import WadiTemplateSelector from '../components/quotations/WadiTemplateSelector';
+import { WADI_TEMPLATES, getWadiTemplate } from '../constants/wadiTemplates';
 
 function ProductSearchInput({ products = [], onSelect, currentModel = '' }) {
   const [query, setQuery] = useState('');
@@ -450,11 +452,18 @@ export default function Quotations() {
   const [busyRowId, setBusyRowId] = useState(null);
   const [parsingPdf, setParsingPdf] = useState(false);
 
+  const [downloadModalQuotation, setDownloadModalQuotation] = useState(null);
+  const [downloadSelectedTemplate, setDownloadSelectedTemplate] = useState('dewas');
+
   const [form, setForm] = useState({
     customer_name: '',
     company_name: '',
     status: 'draft',
     category: 'DEWAS',
+    template_type: 'wadi_split_case',
+    material_construction: '',
+    scope_of_supply: '',
+    installation_note: '',
     sales_person_name: 'Puneet Choudhary',
     sales_person_phone: '9179076660',
     delivery_terms: 'Ex Godown',
@@ -468,6 +477,7 @@ export default function Quotations() {
         head: '',
         flow: '',
         size: '',
+        application: '',
         qty: 1,
         rate: 0,
         discounted_price: 0,
@@ -590,6 +600,10 @@ export default function Quotations() {
       if (qData) {
         setEditingQuotation({
           ...qData,
+          template_type: qData.template_type || (qData.category === 'WADI' ? 'wadi_split_case' : ''),
+          material_construction: qData.material_construction || '',
+          scope_of_supply: qData.scope_of_supply || '',
+          installation_note: qData.installation_note || '',
           sales_person_name: qData.sales_person_name !== undefined && qData.sales_person_name !== null && qData.sales_person_name !== '' ? qData.sales_person_name : (qData.category === 'DIGISET' ? 'Pradeep Ghadge' : 'Puneet Choudhary'),
           sales_person_phone: qData.sales_person_phone !== undefined && qData.sales_person_phone !== null && qData.sales_person_phone !== '' ? qData.sales_person_phone : (qData.category === 'DIGISET' ? '8269000495' : '9179076660'),
           panel_type: qData.panel_type || (qData.category === 'DIGISET' ? 'Both (Standard / Automatic)' : ''),
@@ -619,6 +633,7 @@ export default function Quotations() {
             return {
               description: it.description || '',
               model: it.model || cf.model || '',
+              application: it.application || cf.application || '',
               hp: it.motor_hp || it.hp || cf.motor_hp || cf.hp || '',
               head: it.head || cf.head || '',
               flow: it.flow_rate || it.flow || cf.flow_rate || cf.flow || '',
@@ -1019,14 +1034,22 @@ export default function Quotations() {
         >
           Invoice
         </button>
-        <a
-          href={getApiUrl(`/quotations/${q.id}/pdf`)}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded border border-indigo-500 px-2 py-1 text-xs text-indigo-600"
+        <button
+          type="button"
+          onClick={() => {
+            setDownloadModalQuotation(q);
+            if (q.category === 'WADI') {
+              setDownloadSelectedTemplate(q.template_type || 'wadi_split_case');
+            } else if (q.category === 'DIGISET') {
+              setDownloadSelectedTemplate('digiset');
+            } else {
+              setDownloadSelectedTemplate('dewas');
+            }
+          }}
+          className="rounded border border-indigo-500 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
         >
           Download PDF
-        </a>
+        </button>
 
         <button
           type="button"
@@ -1078,6 +1101,19 @@ export default function Quotations() {
                 setForm((prev) => ({
                   ...prev,
                   category: cat,
+                  ...(cat === 'WADI' ? {
+                    template_type: prev.template_type || 'wadi_split_case',
+                    subject: prev.subject || 'Kirloskar make Horizontal Split Case Pump set.',
+                    material_construction: prev.material_construction || 'UP Pump (01 MOC) – CI–Casing / CI-Impeller / Shaft – 40C8 With Gland Packed',
+                    sales_person_name: prev.sales_person_name || 'G S Sayan',
+                    sales_person_phone: prev.sales_person_phone || '9893276018',
+                    delivery_terms: prev.delivery_terms || 'Quoted prices net and FOR our Dewas Naka Godown Delivery.',
+                    payment_terms: prev.payment_terms || '100% payment advance along with PO against Proforma Invoice before dispatch of Material.',
+                    availability_terms: prev.availability_terms || '10 Days after receipt of your PO.',
+                    warranty_terms: prev.warranty_terms || '12 months from the date of commissioning whichever is earlier as a special case related to any manufacturing or quality issues under standard operation as per the warranty clause.',
+                    taxes_terms: prev.taxes_terms || '18 % GST will be charged extra as applicable on pump',
+                    validity_terms: prev.validity_terms || 'Our will be valid for 15 days only.',
+                  } : {}),
                   ...(cat === 'DIGISET' ? {
                     panel_type: prev.panel_type || DIGISET_DEFAULT_TERMS.panel_type,
                     sales_person_name: prev.sales_person_name === 'Puneet Choudhary' ? DIGISET_DEFAULT_TERMS.sales_person_name : (prev.sales_person_name || DIGISET_DEFAULT_TERMS.sales_person_name),
@@ -1106,6 +1142,22 @@ export default function Quotations() {
             </select>
           </div>
         </div>
+
+        {/* WADI 4 Quotation Templates Selector */}
+        {form.category === 'WADI' && (
+          <WadiTemplateSelector
+            selectedTemplateId={form.template_type || 'wadi_split_case'}
+            onSelectTemplate={(tmplId, defaults) => {
+              setForm((prev) => ({
+                ...prev,
+                template_type: tmplId,
+                ...defaults
+              }));
+            }}
+            values={form}
+            onChangeField={(field, val) => setForm((prev) => ({ ...prev, [field]: val }))}
+          />
+        )}
 
         {/* DIGISET Control Panel Selection (Standard, Automatic, Both) */}
         {form.category === 'DIGISET' && (
@@ -1238,49 +1290,44 @@ export default function Quotations() {
 
                     {form.category === 'WADI' && (
                       <>
+                        {(form.template_type === 'wadi_fire_fighting' || form.template_type === 'wadi_fire_fighting_moc') && (
+                          <div>
+                            <label className="text-xs font-medium text-slate-600">Application</label>
+                            <input
+                              className="w-full rounded border p-2 text-xs font-semibold text-emerald-900 bg-emerald-50/30"
+                              placeholder="e.g. Main Pump / Diesel / Jockey"
+                              value={item.application || ''}
+                              onChange={(e) => updateItem(idx, 'application', e.target.value)}
+                            />
+                          </div>
+                        )}
                         <div>
-                          <label className="text-xs font-medium text-slate-600">Pump Model</label>
+                          <label className="text-xs font-medium text-slate-600">Pump Model &amp; Description</label>
                           <input
                             className="w-full rounded border p-2 text-xs"
-                            placeholder="e.g. DB 100/26"
+                            placeholder="e.g. UP 250/38 or DB 80/20xe"
                             value={item.model || ''}
                             onChange={(e) => updateItem(idx, 'model', e.target.value)}
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-medium text-slate-600">Delivery Size</label>
+                          <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
                           <input
                             className="w-full rounded border p-2 text-xs"
-                            placeholder="e.g. 100 mm"
-                            value={item.size || ''}
-                            onChange={(e) => updateItem(idx, 'size', e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-slate-600">Pump Head</label>
-                          <input
-                            className="w-full rounded border p-2 text-xs"
-                            placeholder="e.g. 35 m"
+                            placeholder="e.g. 45 m / 100 m"
                             value={item.head || ''}
                             onChange={(e) => updateItem(idx, 'head', e.target.value)}
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-medium text-slate-600">Discharge / Flow</label>
+                          <label className="text-xs font-medium text-slate-600">
+                            Flow ({form.template_type === 'wadi_split_case' ? 'LPS' : (form.template_type === 'wadi_end_suction' ? 'm3/h' : 'm3/hr')})
+                          </label>
                           <input
                             className="w-full rounded border p-2 text-xs"
-                            placeholder="e.g. 40 lps"
+                            placeholder={form.template_type === 'wadi_split_case' ? 'e.g. 160 LPS' : (form.template_type === 'wadi_end_suction' ? 'e.g. 130 m3/h' : 'e.g. 273 m3/hr')}
                             value={item.flow || ''}
                             onChange={(e) => updateItem(idx, 'flow', e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-slate-600">Material (MOC)</label>
-                          <input
-                            className="w-full rounded border p-2 text-xs"
-                            placeholder="e.g. CI / Bronze"
-                            value={item.hp || ''}
-                            onChange={(e) => updateItem(idx, 'hp', e.target.value)}
                           />
                         </div>
                       </>
@@ -1634,6 +1681,26 @@ export default function Quotations() {
               />
             )}
 
+            {/* WADI 4-Template Selection inside Edit Modal */}
+            {editingQuotation.category === 'WADI' && (
+              <WadiTemplateSelector
+                selectedTemplateId={editingQuotation.template_type || 'wadi_split_case'}
+                onSelectTemplate={(tmplId, defaults) => {
+                  setEditingQuotation((prev) => ({
+                    ...prev,
+                    template_type: tmplId,
+                    material_construction: defaults.material_construction !== undefined ? defaults.material_construction : prev.material_construction,
+                    scope_of_supply: defaults.scope_of_supply !== undefined ? defaults.scope_of_supply : prev.scope_of_supply,
+                    installation_note: defaults.installation_note !== undefined ? defaults.installation_note : prev.installation_note,
+                    sales_person_name: defaults.sales_person_name || prev.sales_person_name,
+                    sales_person_phone: defaults.sales_person_phone || prev.sales_person_phone,
+                  }));
+                }}
+                values={editingQuotation}
+                onChangeField={(field, val) => setEditingQuotation((prev) => ({ ...prev, [field]: val }))}
+              />
+            )}
+
             {/* Editable Line Items Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -1752,49 +1819,44 @@ export default function Quotations() {
 
                         {editingQuotation.category === 'WADI' && (
                           <>
+                            {(editingQuotation.template_type === 'wadi_fire_fighting' || editingQuotation.template_type === 'wadi_fire_fighting_moc') && (
+                              <div>
+                                <label className="text-xs font-medium text-slate-600">Application</label>
+                                <input
+                                  className="w-full rounded border p-2 text-xs"
+                                  placeholder="e.g. Main Pump / Diesel Engine Pump / Jockey Pump"
+                                  value={item.application || ''}
+                                  onChange={(e) => updateEditItem(idx, 'application', e.target.value)}
+                                />
+                              </div>
+                            )}
                             <div>
-                              <label className="text-xs font-medium text-slate-600">Pump Model</label>
+                              <label className="text-xs font-medium text-slate-600">Pump Model &amp; Description</label>
                               <input
                                 className="w-full rounded border p-2 text-xs"
-                                placeholder="Model"
+                                placeholder="e.g. UP 250/38 or DB 80/20xe"
                                 value={item.model || ''}
                                 onChange={(e) => updateEditItem(idx, 'model', e.target.value)}
                               />
                             </div>
                             <div>
-                              <label className="text-xs font-medium text-slate-600">Delivery Size</label>
+                              <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
                               <input
                                 className="w-full rounded border p-2 text-xs"
-                                placeholder="Size"
-                                value={item.size || ''}
-                                onChange={(e) => updateEditItem(idx, 'size', e.target.value)}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs font-medium text-slate-600">Pump Head</label>
-                              <input
-                                className="w-full rounded border p-2 text-xs"
-                                placeholder="Head"
+                                placeholder="e.g. 45 m / 100 m"
                                 value={item.head || ''}
                                 onChange={(e) => updateEditItem(idx, 'head', e.target.value)}
                               />
                             </div>
                             <div>
-                              <label className="text-xs font-medium text-slate-600">Discharge / Flow</label>
+                              <label className="text-xs font-medium text-slate-600">
+                                Flow ({editingQuotation.template_type === 'wadi_split_case' ? 'LPS' : (editingQuotation.template_type === 'wadi_end_suction' ? 'm3/h' : 'm3/hr')})
+                              </label>
                               <input
                                 className="w-full rounded border p-2 text-xs"
-                                placeholder="Flow"
+                                placeholder={editingQuotation.template_type === 'wadi_split_case' ? 'e.g. 160 LPS' : (editingQuotation.template_type === 'wadi_end_suction' ? 'e.g. 130 m3/h' : 'e.g. 273 m3/hr')}
                                 value={item.flow || ''}
                                 onChange={(e) => updateEditItem(idx, 'flow', e.target.value)}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs font-medium text-slate-600">Material (MOC)</label>
-                              <input
-                                className="w-full rounded border p-2 text-xs"
-                                placeholder="MOC"
-                                value={item.hp || ''}
-                                onChange={(e) => updateEditItem(idx, 'hp', e.target.value)}
                               />
                             </div>
                           </>
@@ -1986,6 +2048,10 @@ export default function Quotations() {
                       customer_name: editingQuotation.customer_name,
                       company_name: editingQuotation.company_name,
                       category: editingQuotation.category,
+                      template_type: editingQuotation.template_type,
+                      material_construction: editingQuotation.material_construction,
+                      scope_of_supply: editingQuotation.scope_of_supply,
+                      installation_note: editingQuotation.installation_note,
                       status: editingQuotation.status,
                       notes: editingQuotation.notes,
                       attention_person: editingQuotation.attention_person,
@@ -2013,6 +2079,7 @@ export default function Quotations() {
                       items: (editingQuotation.items || []).map((it) => ({
                         description: it.description || it.model || '',
                         model: it.model || '',
+                        application: it.application || '',
                         motor_hp: it.hp || '',
                         head: it.head || '',
                         flow_rate: it.flow || '',
@@ -2112,6 +2179,122 @@ export default function Quotations() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      {/* DOWNLOAD / VIEW PDF TEMPLATE SELECTION MODAL */}
+      {downloadModalQuotation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Download Quotation PDF</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Select the template format you want to generate for quotation #{downloadModalQuotation.quotation_number}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDownloadModalQuotation(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Customer:</span>
+                <span className="font-semibold text-slate-800">{downloadModalQuotation.customer_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Quotation Category:</span>
+                <span className="rounded bg-brand-100 px-2 py-0.5 font-bold text-brand-700">
+                  {downloadModalQuotation.category || 'DEWAS'}
+                </span>
+              </div>
+            </div>
+
+            {/* Template options */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                Choose Quotation Template Format
+              </label>
+
+              {downloadModalQuotation.category === 'WADI' ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { id: 'wadi_split_case', name: 'Horizontal Split Case', sub: 'UP Series • Flow in LPS • G S Sayan' },
+                    { id: 'wadi_fire_fighting', name: 'Fire Fighting (Greaves)', sub: 'Diesel/Jockey Set • Pradeep Ghadge' },
+                    { id: 'wadi_end_suction', name: 'End Suction Pump', sub: 'Single Page • Flow in m3/h • Puneet C.' },
+                    { id: 'wadi_fire_fighting_moc', name: 'Fire Fighting (MOC & Scope)', sub: 'Convenient Firetech • 4-stage' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setDownloadSelectedTemplate(t.id)}
+                      className={`text-left rounded-xl p-3 border-2 transition-all ${
+                        downloadSelectedTemplate === t.id
+                          ? 'border-brand-600 bg-brand-50/60 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900">{t.name}</span>
+                        {downloadSelectedTemplate === t.id && (
+                          <span className="h-2 w-2 rounded-full bg-brand-600"></span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">{t.sub}</p>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { id: 'dewas', name: 'Dewas Standard', desc: 'Standard Kirloskar Dewas pump format' },
+                    { id: 'digiset', name: 'Digiset DG Set', desc: 'DG set format with technical annexures' },
+                    { id: 'baerlocher', name: 'Baerlocher', desc: 'Special industrial customer format' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setDownloadSelectedTemplate(t.id)}
+                      className={`text-left rounded-xl p-3 border-2 transition-all ${
+                        downloadSelectedTemplate === t.id
+                          ? 'border-brand-600 bg-brand-50/60 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900">{t.name}</span>
+                        {downloadSelectedTemplate === t.id && (
+                          <span className="h-2 w-2 rounded-full bg-brand-600"></span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">{t.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <button
+                type="button"
+                onClick={() => setDownloadModalQuotation(null)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <a
+                href={getApiUrl(`/quotations/${downloadModalQuotation.id}/pdf?template=${downloadSelectedTemplate}`)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-xs font-bold text-white hover:bg-brand-700 shadow-md transition-colors"
+              >
+                <span>📄 Open / Download PDF</span>
+              </a>
             </div>
           </div>
         </div>
