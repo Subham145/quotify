@@ -6,6 +6,7 @@ import { api, getApiUrl } from '../api/http';
 import { useAuth } from '../lib/AuthContext';
 import { canAccess } from '../lib/permissions';
 import { extractTextFromPdf } from '../lib/pdfTextExtractor';
+import mammoth from 'mammoth/mammoth.browser';
 import {
   KIRLOSKAR_INLINE_PUMPS,
   KIRLOSKAR_MONOBLOC_PUMPS,
@@ -122,6 +123,10 @@ export default function Products() {
       if (!map.has(key)) {
         map.set(key, p);
       }
+      if (p.code) {
+        const codeKey = `${p.code.trim().toLowerCase()}:::${(p.category || '').trim().toLowerCase()}`;
+        if (!map.has(codeKey)) map.set(codeKey, p);
+      }
     });
     return map;
   }, [products]);
@@ -196,11 +201,123 @@ export default function Products() {
   const deduplicateParsedList = (list) => {
     const seen = new Set();
     return list.filter((p) => {
-      const key = `${(p.product_name || '').trim().toUpperCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toUpperCase()}`;
+      const key = `${(p.code || p.product_name || '').trim().toUpperCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toUpperCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+  };
+
+  const extractWordText = async (file) => {
+    const buffer = await file.arrayBuffer();
+    if (/\.docx$/i.test(file.name)) {
+      const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+      return result.value || '';
+    }
+
+    // Legacy .doc files are OLE compound documents. Pull text from their
+    // WordDocument stream as UTF-16LE runs, which preserves common specs.
+    const bytes = new Uint8Array(buffer);
+    const signature = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+    if (!signature.every((byte, index) => bytes[index] === byte)) {
+      throw new Error(`${file.name} is not a readable Word document.`);
+    }
+    const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
+    const decoder = new TextDecoder('utf-16le');
+    const chunks = [];
+    const pattern = /[\x20-\x7e\r\n\t]{4,}/g;
+    for (const match of binary.matchAll(pattern)) {
+      const start = match.index;
+      const end = start + match[0].length;
+      const wideStart = Math.max(0, start - 1);
+      const wideEnd = Math.min(bytes.length, end * 2);
+      if (wideEnd - wideStart > match[0].length * 1.5) {
+        const wide = decoder.decode(bytes.slice(wideStart, wideEnd)).replace(/[^\x20-\x7e\r\n\t]/g, ' ').trim();
+        if (wide.length >= 6) chunks.push(wide);
+      }
+      chunks.push(match[0]);
+    }
+    return chunks.join('\n');
+  };
+
+  const parseDigisetWord = (text, fileName) => {
+    const normalized = text
+      .replace(/[\u0000-\u001f]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/[‐‑‒–—−]/g, '-');
+    const ratings = new Set();
+    const ratingPattern = /\b(\d{1,3}(?:\.\d+)?)\s*(?:KVA|K\s*VA)\b/gi;
+    for (const match of normalized.matchAll(ratingPattern)) ratings.add(match[1]);
+    if (ratings.size === 0) {
+      const nameMatch = fileName.match(/(\d{1,3}(?:\.\d+)?)\s*KVA/i);
+      if (nameMatch) ratings.add(nameMatch[1]);
+    }
+
+    return [...ratings].map((rating) => {
+      const model = `${rating} KVA`;
+      const details = [];
+      const addDetail = (label, pattern) => {
+        const found = normalized.match(pattern);
+        if (found && !details.some((item) => item.toLowerCase() === `${label}: ${found[1]}`.toLowerCase())) {
+          details.push(`${label}: ${found[1]}`);
+        }
+      };
+      addDetail('Engine', /\b(?:engine\s*(?:model|make)?|make\s*of\s*engine)\s*[:\-]?\s*([A-Z0-9][A-Z0-9 .\/-]{1,35})/i);
+      addDetail('Alternator', /\b(?:alternator\s*(?:model|make)?|make\s*of\s*alternator)\s*[:\-]?\s*([A-Z0-9][A-Z0-9 .\/-]{1,35})/i);
+      addDetail('Fuel tank', /\b(?:fuel\s*tank(?:\s*capacity)?)\s*[:\-]?\s*(\d+(?:\.\d+)?\s*(?:L|litres?|ltr))/i);
+      addDetail('Emission standard', /\b(CPCB\s*(?:IV\+?|IV|II)|BS\s*VI)\b/i);
+      const config = /\b(?:STD\s*(?:&|AND)\s*AMF|STANDARD\s*(?:&|AND)\s*AMF)\b/i.test(normalized)
+        ? 'Standard & AMF'
+        : 'Standard & AMF';
+      return {
+        product_name: `${model} DG Set - ${config}${details.length ? ` (${details.join('; ')})` : ''}`,
+        code: model,
+        category: 'DIGISET',
+        price: 0,
+        gst_rate: 18,
+        unit: 'set',
+        group_name: 'DG Sets',
+      };
+    });
+  };
+
+  const handleWordUpload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setCatalogParsing(true);
+    setActionError('');
+    setCatalogCategory('DIGISET');
+    try {
+      const parsed = [];
+      const failures = [];
+      for (const file of files) {
+        try {
+          const text = await extractWordText(file);
+          const productsFromFile = parseDigisetWord(text, file.name);
+          if (!productsFromFile.length) failures.push(`${file.name}: KVA rating not detected`);
+          parsed.push(...productsFromFile);
+        } catch (error) {
+          failures.push(`${file.name}: ${error.message || 'could not read file'}`);
+        }
+      }
+
+      const mapped = deduplicateParsedList(parsed).map((product) => ({
+        ...product,
+        code: product.code || product.product_name,
+        description: product.description || product.product_name,
+      }));
+      if (!mapped.length) {
+        throw new Error(failures.length ? failures.join(' | ') : 'No Digiset models found in the selected documents.');
+      }
+      setParsedProducts(mapped);
+      setSelectedIndices(new Set(mapped.map((_, index) => index)));
+      if (failures.length) setActionError(`Imported preview has ${mapped.length} model(s). Some files need checking: ${failures.join(' | ')}`);
+    } catch (error) {
+      setActionError(error.message || 'Could not parse the selected Word documents.');
+    } finally {
+      setCatalogParsing(false);
+      event.target.value = '';
+    }
   };
 
   const handlePdfUpload = async (e) => {
@@ -299,7 +416,7 @@ export default function Products() {
     const existingToUpdate = [];
 
     for (const p of toImport) {
-      const key = `${(p.product_name || '').trim().toLowerCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toLowerCase()}`;
+      const key = `${(p.code || p.product_name || '').trim().toLowerCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toLowerCase()}`;
       const existing = existingProductMap.get(key);
       if (existing) {
         existingToUpdate.push({ existingId: existing.id, p });
@@ -318,7 +435,7 @@ export default function Products() {
       if (newProducts.length > 0) {
         const res = await api('/products/bulk-create', {
           method: 'POST',
-          body: JSON.stringify({ products: newProducts }),
+          body: JSON.stringify({ products: newProducts.map((product) => ({ ...product, product_name: product.description || product.product_name })) }),
         });
         if (res?.ok) {
           createdCount = res.count || newProducts.length;
@@ -383,7 +500,7 @@ export default function Products() {
   const selectOnlyNewParsed = () => {
     const newIndices = new Set();
     parsedProducts.forEach((p, idx) => {
-      const key = `${(p.product_name || '').trim().toLowerCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toLowerCase()}`;
+      const key = `${(p.code || p.product_name || '').trim().toLowerCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toLowerCase()}`;
       if (!existingProductMap.has(key)) {
         newIndices.add(idx);
       }
@@ -646,7 +763,7 @@ export default function Products() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageHeader title="Products & Services" description="Manage pump models, technical specs, and bulk import from catalog PDFs." />
+        <PageHeader title="Products & Services" description="Manage products and import models from catalog files." />
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -659,7 +776,7 @@ export default function Products() {
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            Upload / Import Catalog PDF
+            Upload / Import Products
           </button>
         </div>
       </div>
@@ -856,7 +973,7 @@ export default function Products() {
           <div className="max-h-[92vh] w-full max-w-5xl flex flex-col rounded-xl bg-white shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between border-b px-6 py-4 bg-slate-50">
               <div>
-                <h3 className="text-base font-bold text-slate-800">Import Products from Catalog PDF</h3>
+                <h3 className="text-base font-bold text-slate-800">Import Products from Catalog Files</h3>
                 <p className="text-xs text-slate-500">Upload Kirloskar pump catalogs, technical sheets, or performance charts to extract pump models automatically.</p>
               </div>
               <button
@@ -880,7 +997,7 @@ export default function Products() {
                     <span>Target Product Category for Import:</span>
                   </label>
                   <p className="text-[11px] text-indigo-700">
-                    Select the product category that will be assigned to items extracted from this PDF.
+                    Choose the category for catalog files. Digiset Word documents are automatically categorized as DIGISET.
                   </p>
                 </div>
                 <select
@@ -1201,7 +1318,16 @@ export default function Products() {
                 </div>
               </div>
 
-              {/* File Upload Box */}
+              {/* Digiset Word Upload Box */}
+              <div className="rounded-lg border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-5 text-center">
+                <input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple id="digiset-word-input" className="hidden" onChange={handleWordUpload} />
+                <label htmlFor="digiset-word-input" className="block cursor-pointer space-y-2">
+                  <div className="text-sm font-semibold text-emerald-900">{catalogParsing ? 'Reading Word documents...' : 'Upload Digiset Word files (.doc / .docx)'}</div>
+                  <p className="text-xs text-slate-600">Select multiple model documents together. Detected products appear below for review before import.</p>
+                </label>
+              </div>
+
+              {/* PDF File Upload Box */}
               <div className="rounded-lg border-2 border-dashed border-indigo-200 bg-indigo-50/50 p-6 text-center">
                 <input
                   type="file"
@@ -1217,7 +1343,7 @@ export default function Products() {
                     </svg>
                   </div>
                   <div className="text-sm font-semibold text-indigo-900">
-                    {catalogParsing ? 'Analyzing Catalog PDF...' : `Or Upload Any Other PDF (${catalogCategory})`}
+                {catalogParsing ? 'Analyzing Catalog PDF...' : `Upload a pump catalog PDF (${catalogCategory})`}
                   </div>
                   <p className="text-xs text-slate-500">Auto-extracts specs, pipe sizes, HP/kW ratings, and head duty tables</p>
                 </label>
@@ -1266,7 +1392,8 @@ export default function Products() {
                               onChange={toggleSelectAll}
                             />
                           </th>
-                          <th className="p-2">Model / Name</th>
+                          <th className="p-2">Model</th>
+                          <th className="p-2">Description</th>
                           <th className="p-2">Category</th>
                           <th className="p-2">Group</th>
                           <th className="p-2">HP / kW</th>
@@ -1278,7 +1405,7 @@ export default function Products() {
                       </thead>
                       <tbody className="divide-y">
                         {parsedProducts.map((p, idx) => {
-                          const key = `${(p.product_name || '').trim().toLowerCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toLowerCase()}`;
+                          const key = `${(p.code || p.product_name || '').trim().toLowerCase()}:::${(p.category || catalogCategory || 'DEWAS').trim().toLowerCase()}`;
                           const isAlreadyInDb = existingProductMap.has(key);
                           return (
                           <tr key={idx} className={selectedIndices.has(idx) ? 'bg-indigo-50/30' : 'opacity-60 bg-slate-50'}>
@@ -1292,9 +1419,10 @@ export default function Products() {
                             <td className="p-2">
                               <div className="space-y-1">
                                 <input
-                                  className="w-full rounded border px-1.5 py-1 text-xs font-bold"
-                                  value={p.product_name || ''}
-                                  onChange={(e) => updateParsedProductField(idx, 'product_name', e.target.value)}
+                                  className="w-28 rounded border px-1.5 py-1 text-xs font-bold"
+                                  value={p.code || ''}
+                                  aria-label="Product model"
+                                  onChange={(e) => updateParsedProductField(idx, 'code', e.target.value)}
                                 />
                                 <div>
                                   {isAlreadyInDb ? (
@@ -1308,6 +1436,18 @@ export default function Products() {
                                   )}
                                 </div>
                               </div>
+                            </td>
+                            <td className="p-2">
+                              <input
+                                className="w-64 rounded border px-1.5 py-1 text-xs"
+                                value={p.description || p.product_name || ''}
+                                aria-label="Product description"
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  updateParsedProductField(idx, 'description', value);
+                                  updateParsedProductField(idx, 'product_name', value);
+                                }}
+                              />
                             </td>
                             <td className="p-2">
                               <select

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import DataTable from '../components/shared/DataTable';
 import PageHeader from '../components/shared/PageHeader';
@@ -8,15 +8,20 @@ import { useAuth } from '../lib/AuthContext';
 import { canAccess, isManager } from '../lib/permissions';
 import WadiTemplateSelector from '../components/quotations/WadiTemplateSelector';
 
-function ProductSearchInput({ products = [], onSelect, currentModel = '' }) {
+function ProductSearchInput({ products = [], onSelect, currentModel = '', category = '' }) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    setQuery('');
+    setIsOpen(false);
+  }, [category]);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase().trim();
     const qClean = q.replace(/[\s\-_]/g, '');
-    return products.filter((p) => {
+    return products.filter((p) => String(p.category || '').trim().toUpperCase() === String(category || '').trim().toUpperCase()).filter((p) => {
       const name = (p.product_name || '').toLowerCase();
       const code = (p.code || '').toLowerCase();
       const hp = (p.hp || '').toLowerCase();
@@ -179,57 +184,59 @@ function ControlPanelSelector({ value, onChange }) {
   );
 }
 
-function CommercialTermsEditor({ values, onChange, isDigiset }) {
-  if (!isDigiset) {
+function CommercialTermsEditor({ values = {}, onChange, isDigiset }) {
+  const isDigi = Boolean(isDigiset) || String(values?.category || '').trim().toUpperCase() === 'DIGISET';
+
+  if (!isDigi) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-xs">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2.5 shadow-xs">
         <div className="border-b border-slate-100 pb-2">
-          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            <span>📝 Quotation Terms &amp; Sign-off Details</span>
+          <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            <span>📝</span> Quotation Terms &amp; Sign-off Details
           </h4>
-          <p className="text-xs text-slate-500">Edit sign-off contact person and commercial terms for the quotation PDF.</p>
+          <p className="text-[11px] text-slate-500">Edit sign-off contact person and commercial terms for the quotation PDF.</p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
           <div>
-            <label className="text-xs font-semibold text-slate-700">Yours truly (Contact Person)</label>
+            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Yours truly (Contact Person)</label>
             <input
-              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
               value={values.sales_person_name || ''}
               onChange={(e) => onChange('sales_person_name', e.target.value)}
               placeholder="e.g. Puneet Choudhary"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Contact Number</label>
+            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Contact Number</label>
             <input
-              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
               value={values.sales_person_phone || ''}
               onChange={(e) => onChange('sales_person_phone', e.target.value)}
               placeholder="e.g. 91790-76660"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Delivery Terms</label>
+            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Delivery Terms</label>
             <input
-              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
               value={values.delivery_terms || ''}
               onChange={(e) => onChange('delivery_terms', e.target.value)}
               placeholder="e.g. Ex Godown"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Payment Terms</label>
+            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Payment Terms</label>
             <input
-              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
               value={values.payment_terms || ''}
               onChange={(e) => onChange('payment_terms', e.target.value)}
               placeholder="e.g. 100% advance"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Freight Terms</label>
+            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Freight Terms</label>
             <input
-              className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
               value={values.freight_terms || ''}
               onChange={(e) => onChange('freight_terms', e.target.value)}
               placeholder="e.g. To Pay"
@@ -241,36 +248,36 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 shadow-xs">
-      <div className="border-b border-slate-100 pb-2.5 flex flex-wrap items-center justify-between gap-2">
+    <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-xs">
+      <div className="border-b border-slate-100 pb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            <span>📜 Commercial Terms &amp; Conditions (DIGISET)</span>
-            <span className="rounded bg-brand-50 border border-brand-200 px-2 py-0.5 text-[11px] font-bold text-brand-700">
+          <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            <span>📜</span> Commercial Terms &amp; Conditions (DIGISET)
+            <span className="rounded bg-brand-50 border border-brand-200 px-2 py-0.5 text-[10px] font-bold text-brand-700">
               13 Terms - All Editable
             </span>
           </h4>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             All 13 official commercial terms below are pre-filled and completely editable for this quotation &amp; PDF:
           </p>
         </div>
       </div>
 
       {/* Sign-off Details */}
-      <div className="grid gap-3 sm:grid-cols-2 bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
+      <div className="grid gap-2 sm:grid-cols-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
         <div>
-          <label className="text-xs font-bold text-slate-700">Yours truly (Contact Person)</label>
+          <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Yours truly (Contact Person)</label>
           <input
-            className="w-full rounded-lg border bg-white p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.sales_person_name || ''}
             onChange={(e) => onChange('sales_person_name', e.target.value)}
             placeholder="e.g. Pradeep Ghadge"
           />
         </div>
         <div>
-          <label className="text-xs font-bold text-slate-700">Contact Number</label>
+          <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Contact Number</label>
           <input
-            className="w-full rounded-lg border bg-white p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.sales_person_phone || ''}
             onChange={(e) => onChange('sales_person_phone', e.target.value)}
             placeholder="e.g. 8269000495"
@@ -278,14 +285,14 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
       </div>
 
-      {/* 13 Commercial Terms */}
-      <div className="grid gap-3.5 sm:grid-cols-2">
+      {/* 13 Commercial Terms - Open & Visible */}
+      <div className="grid gap-2.5 sm:grid-cols-2">
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 1. GST Clause
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 1. GST Clause
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.taxes_terms !== undefined ? values.taxes_terms : DIGISET_DEFAULT_TERMS.taxes_terms}
             onChange={(e) => onChange('taxes_terms', e.target.value)}
             placeholder="-GST@18% shall be charged extra in the above price."
@@ -293,11 +300,11 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 2. DELIVERY
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 2. DELIVERY
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.delivery_terms !== undefined ? values.delivery_terms : DIGISET_DEFAULT_TERMS.delivery_terms}
             onChange={(e) => onChange('delivery_terms', e.target.value)}
             placeholder="Ex Godown"
@@ -305,11 +312,11 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 3. WARRANTY
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 3. WARRANTY
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.warranty_terms !== undefined ? values.warranty_terms : DIGISET_DEFAULT_TERMS.warranty_terms}
             onChange={(e) => onChange('warranty_terms', e.target.value)}
             placeholder="5 Years warranty / 5000 hours subject to warranty document attached."
@@ -317,11 +324,11 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 4. FREIGHT &amp; TRANSIT INSURANCE
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 4. FREIGHT &amp; TRANSIT INSURANCE
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.insurance_terms !== undefined ? values.insurance_terms : DIGISET_DEFAULT_TERMS.insurance_terms}
             onChange={(e) => onChange('insurance_terms', e.target.value)}
             placeholder="-Freight & Transit Insurance up-to site at actual is INCLUDED in above price."
@@ -329,11 +336,11 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 5. LOADING / UNLOADING / POSITIONING OF SET AT SITE
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 5. LOADING / UNLOADING / POSITIONING OF SET AT SITE
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.loading_terms !== undefined ? values.loading_terms : DIGISET_DEFAULT_TERMS.loading_terms}
             onChange={(e) => onChange('loading_terms', e.target.value)}
             placeholder="– To be done by client."
@@ -341,11 +348,11 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 7. PERMISSION FOR THE GENERATOR SET
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 7. PERMISSION FOR THE GENERATOR SET
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.permission_terms !== undefined ? values.permission_terms : DIGISET_DEFAULT_TERMS.permission_terms}
             onChange={(e) => onChange('permission_terms', e.target.value)}
             placeholder="– All necessary legal requirements / permissions should be obtained by the Buyer."
@@ -353,35 +360,35 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div className="sm:col-span-2">
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 6. INSTALLATION &amp; COMMISSIONING
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 6. INSTALLATION &amp; COMMISSIONING
           </label>
           <textarea
             rows={2}
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.installation_terms !== undefined ? values.installation_terms : DIGISET_DEFAULT_TERMS.installation_terms}
             onChange={(e) => onChange('installation_terms', e.target.value)}
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 8. TERMS OF PAYMENT
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 8. TERMS OF PAYMENT
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.payment_terms !== undefined ? values.payment_terms : DIGISET_DEFAULT_TERMS.payment_terms}
             onChange={(e) => onChange('payment_terms', e.target.value)}
-            placeholder="-30% advance along with the order..."
+            placeholder="-30% advance along with the order and balance 70% against Proforma Invoice prior to dispatch..."
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 9. VALIDITY
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 9. VALIDITY
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.validity_terms !== undefined ? values.validity_terms : DIGISET_DEFAULT_TERMS.validity_terms}
             onChange={(e) => onChange('validity_terms', e.target.value)}
             placeholder="- The offer is valid for 30 Days."
@@ -389,23 +396,23 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div className="sm:col-span-2">
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 10. STATUTORY VARIATIONS
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 10. STATUTORY VARIATIONS
           </label>
           <textarea
             rows={2}
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.statutory_terms !== undefined ? values.statutory_terms : DIGISET_DEFAULT_TERMS.statutory_terms}
             onChange={(e) => onChange('statutory_terms', e.target.value)}
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 11. FORCE MAJEURE CLAUSE
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 11. FORCE MAJEURE CLAUSE
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.force_majeure_terms !== undefined ? values.force_majeure_terms : DIGISET_DEFAULT_TERMS.force_majeure_terms}
             onChange={(e) => onChange('force_majeure_terms', e.target.value)}
             placeholder="- The offer shall be subjected to force majeure clause."
@@ -413,24 +420,24 @@ function CommercialTermsEditor({ values, onChange, isDigiset }) {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
-            <span>➢</span> 12. ARBITRATION
+          <label className="block text-[11px] font-bold text-slate-800 mb-0.5">
+            <span className="text-brand-600">➢</span> 12. ARBITRATION
           </label>
           <input
-            className="w-full rounded-lg border p-2 text-xs font-medium focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium focus:border-brand-500 focus:outline-none"
             value={values.arbitration_terms !== undefined ? values.arbitration_terms : DIGISET_DEFAULT_TERMS.arbitration_terms}
             onChange={(e) => onChange('arbitration_terms', e.target.value)}
-            placeholder="- The venue of arbitration shall be INDORE..."
+            placeholder="- The venue of arbitration shall be INDORE for any disputes..."
           />
         </div>
 
         <div className="sm:col-span-2">
-          <label className="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+          <label className="block text-[11px] font-bold text-rose-800 flex items-center gap-1.5 mb-0.5">
             <span>➢</span> 13. CANCELLATION OF ORDER
             <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-semibold">Editable</span>
           </label>
           <input
-            className="w-full rounded-lg border-2 border-rose-300 bg-rose-50/30 p-2 text-xs font-medium text-rose-950 focus:border-rose-500 focus:outline-none"
+            className="w-full rounded-lg border-2 border-rose-300 bg-rose-50/30 px-2.5 py-1.5 text-xs font-medium text-rose-950 focus:border-rose-500 focus:outline-none"
             value={values.cancellation_terms !== undefined ? values.cancellation_terms : DIGISET_DEFAULT_TERMS.cancellation_terms}
             onChange={(e) => onChange('cancellation_terms', e.target.value)}
             placeholder="- In case of order cancellation 10% of total value will be levied."
@@ -457,6 +464,7 @@ export default function InquiriesQuotations() {
   const inquiryData =inquiries.find(i=>String(i.id)===selectedInquiry);
   const { data: productsRaw } = useQuery({ queryKey: ['products'], queryFn: () => api('/products') });
   const products = Array.isArray(productsRaw) ? productsRaw : Array.isArray(productsRaw?.data)  ? productsRaw.data : [];
+  const productsForCategory = (category) => products.filter((product) => String(product.category || '').trim().toUpperCase() === String(category || '').trim().toUpperCase());
   const { data: quotations = [] } = useQuery({ queryKey: ['quotations'], queryFn: () => api('/quotations') });
   const { data: productCategories = [] } = useQuery({ queryKey: ['product-categories'], queryFn: () => api('/product-categories') });
   const categoryOptions = useMemo(() => {
@@ -559,6 +567,19 @@ export default function InquiriesQuotations() {
         },
       ],
     }));
+  };
+
+  const duplicateItem = (index) => {
+    setQuotationForm((prev) => {
+      const items = [...prev.items];
+      const itemToClone = items[index];
+      const clone = {
+        ...itemToClone,
+        custom_fields: { ...(itemToClone?.custom_fields || {}) },
+      };
+      items.splice(index + 1, 0, clone);
+      return { ...prev, items };
+    });
   };
 
   const removeItem = (index) => {
@@ -1100,6 +1121,17 @@ setActionMessage(
     },
   });
 
+  const updateQuotationStatusMutation = useMutation({
+    mutationFn: ({ id, status }) => api(`/quotations/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['quotations'] });
+      qc.invalidateQueries({ queryKey: ['report-quotation'] });
+      setActionMessage('Quotation status updated successfully');
+      setActionError('');
+    },
+    onError: (err) => setActionError(err.message || 'Failed to update quotation status'),
+  });
+
   const quotationColumns = useMemo(
     () => [
       { key: 'quotation_number', label: 'Quotation No' },
@@ -1198,6 +1230,20 @@ setActionMessage(
 
   const quotationRows = quotations.map((q) => ({
     ...q,
+    status: canEditQuotation ? (
+      <select
+        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none"
+        value={q.status || 'draft'}
+        disabled={updateQuotationStatusMutation.isPending}
+        onChange={(e) => updateQuotationStatusMutation.mutate({ id: q.id, status: e.target.value })}
+        aria-label={`Status for quotation ${q.quotation_number}`}
+      >
+        <option value="draft">Draft</option>
+        <option value="sent">Sent</option>
+        <option value="won">Won</option>
+        <option value="lost">Lost</option>
+      </select>
+    ) : q.status,
     category: (
       <select
         className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 shadow-sm focus:border-brand-500 focus:outline-none"
@@ -1276,11 +1322,15 @@ setActionMessage(
   }));
 
   const editGrandSummary = useMemo(() => {
-    if (!editingQuotation) return { totalQty: 0, subtotal: 0, totalDiscount: 0, totalGst: 0, grandTotal: 0 };
+    if (!editingQuotation) return { totalQty: 0, subtotal: 0, totalDiscount: 0, totalGst: 0, grandTotal: 0, standardSubtotal: 0, standardGst: 0, standardGrandTotal: 0, automaticSubtotal: 0, automaticGst: 0, automaticGrandTotal: 0 };
     let totalQty = 0;
     let subtotal = 0;
     let totalDiscount = 0;
     let totalGst = 0;
+    let standardSubtotal = 0;
+    let standardGst = 0;
+    let automaticSubtotal = 0;
+    let automaticGst = 0;
 
     (editingQuotation.items || []).forEach((item) => {
       const qty = Number(item.qty || 0);
@@ -1293,6 +1343,12 @@ setActionMessage(
       const net = qty * unitPrice;
       const discount = (base - net) > 0 ? (base - net) : 0;
       const gst = (net * Number(item.gst_pct || 0)) / 100;
+      const standardNet = qty * Number(item.custom_fields?.standard_panel_price || 0);
+      const automaticNet = qty * Number(item.custom_fields?.automatic_panel_price || 0);
+      standardSubtotal += standardNet;
+      standardGst += standardNet * Number(item.gst_pct || 0) / 100;
+      automaticSubtotal += automaticNet;
+      automaticGst += automaticNet * Number(item.gst_pct || 0) / 100;
 
       totalQty += qty;
       subtotal += (base > 0 ? base : net);
@@ -1308,6 +1364,12 @@ setActionMessage(
       totalDiscount,
       totalGst,
       grandTotal,
+      standardSubtotal,
+      standardGst,
+      standardGrandTotal: standardSubtotal + standardGst,
+      automaticSubtotal,
+      automaticGst,
+      automaticGrandTotal: automaticSubtotal + automaticGst,
     };
   }, [editingQuotation]);
 
@@ -1316,6 +1378,10 @@ setActionMessage(
     let subtotal = 0;
     let totalDiscount = 0;
     let totalGst = 0;
+    let standardSubtotal = 0;
+    let standardGst = 0;
+    let automaticSubtotal = 0;
+    let automaticGst = 0;
 
     (quotationForm.items || []).forEach((item) => {
       const qty = Number(item.qty || 0);
@@ -1328,6 +1394,12 @@ setActionMessage(
       const net = qty * unitPrice;
       const discount = (base - net) > 0 ? (base - net) : 0;
       const gst = (net * Number(item.gst_pct || 0)) / 100;
+      const standardNet = qty * Number(item.custom_fields?.standard_panel_price || 0);
+      const automaticNet = qty * Number(item.custom_fields?.automatic_panel_price || 0);
+      standardSubtotal += standardNet;
+      standardGst += standardNet * Number(item.gst_pct || 0) / 100;
+      automaticSubtotal += automaticNet;
+      automaticGst += automaticNet * Number(item.gst_pct || 0) / 100;
 
       totalQty += qty;
       subtotal += (base > 0 ? base : net);
@@ -1343,6 +1415,12 @@ setActionMessage(
       totalDiscount,
       totalGst,
       grandTotal,
+      standardSubtotal,
+      standardGst,
+      standardGrandTotal: standardSubtotal + standardGst,
+      automaticSubtotal,
+      automaticGst,
+      automaticGrandTotal: automaticSubtotal + automaticGst,
     };
   }, [quotationForm.items, quotationForm.category]);
 
@@ -1546,6 +1624,7 @@ value={p.product_name}
       company_name: selectedInquiryData?.company || quotationForm.company_name,
       status: quotationForm.status,
       category: quotationForm.category || 'DEWAS',
+      template_type: quotationForm.category === 'DIGISET' ? 'digiset' : (quotationForm.category === 'WADI' ? quotationForm.template_type : 'pump'),
       attention_person: quotationForm.attention_person,
       subject: quotationForm.subject,
       application: quotationForm.application,
@@ -1595,194 +1674,62 @@ value={p.product_name}
       })),
     });
   }}
-  className="card space-y-4"
+  className="card p-4 space-y-3 shadow-md border border-slate-200"
 >
-  <div className="grid gap-3 md:grid-cols-4">
-    <div>
-      <label className="text-sm font-medium">Select Customer Inquiry</label>
-      <select
-        className="w-full rounded border p-2"
-        value={quotationForm.inquiry_id || ''}
-        onChange={(e) => {
-          const inquiry = inquiries.find((i) => String(i.id) === e.target.value);
-          setQuotationForm({
-            ...quotationForm,
-            inquiry_id: e.target.value,
-            customer_name: inquiry?.customer_name || '',
-            company_name: inquiry?.company || '',
-            items: [
-              {
-                ...quotationForm.items[0],
-                description: inquiry?.product_interested || '',
-              },
-            ],
-          });
-        }}
-      >
-        <option value="">Select Customer</option>
-        {inquiries.map((i) => (
-          <option key={i.id} value={i.id}>
-            {i.customer_name} - {i.company}
-          </option>
-        ))}
-      </select>
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Customer Name</label>
-      <input
-        className="w-full rounded border p-2"
-        value={quotationForm.customer_name || ''}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            customer_name: e.target.value,
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Company Name</label>
-      <input
-        className="w-full rounded border p-2"
-        value={quotationForm.company_name || ''}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            company_name: e.target.value,
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Attention Person</label>
-      <input
-        className="w-full rounded border p-2"
-        value={quotationForm.attention_person}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            attention_person: e.target.value,
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Subject</label>
-      <input
-        className="w-full rounded border p-2"
-        value={quotationForm.subject}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            subject: e.target.value,
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Application</label>
-      <input
-        className="w-full rounded border p-2"
-        value={quotationForm.application}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            application: e.target.value,
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Flow (m3/hr)</label>
-      <input
-        className="w-full rounded border p-2"
-        value={quotationForm.flow}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            flow: e.target.value,
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Head (m)</label>
-      <input
-        className="w-full rounded border p-2"
-        value={quotationForm.head}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            head: e.target.value,
-          })
-        }
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-medium">Status</label>
-      <select
-        className="w-full rounded border p-2"
-        value={quotationForm.status}
-        onChange={(e) =>
-          setQuotationForm({
-            ...quotationForm,
-            status: e.target.value,
-          })
-        }
-      >
-        <option value="draft">draft</option>
-        <option value="sent">sent</option>
-        <option value="approved">approved</option>
-        <option value="rejected">rejected</option>
-      </select>
-    </div>
-
-    <div>
-      <label className="text-sm font-semibold text-brand-700">Category</label>
-      <select
-        className="w-full rounded border border-brand-300 bg-brand-50 p-2 font-bold text-brand-800"
-        value={quotationForm.category || 'DEWAS'}
-        onChange={(e) => {
-          const cat = e.target.value;
-          setQuotationForm((prev) => ({
-            ...prev,
-            category: cat,
-            ...(cat === 'DIGISET' ? {
-              panel_type: prev.panel_type || DIGISET_DEFAULT_TERMS.panel_type,
-              sales_person_name: prev.sales_person_name === 'Puneet Choudhary' ? DIGISET_DEFAULT_TERMS.sales_person_name : (prev.sales_person_name || DIGISET_DEFAULT_TERMS.sales_person_name),
-              sales_person_phone: prev.sales_person_phone === '9179076660' ? DIGISET_DEFAULT_TERMS.sales_person_phone : (prev.sales_person_phone || DIGISET_DEFAULT_TERMS.sales_person_phone),
-              taxes_terms: prev.taxes_terms || DIGISET_DEFAULT_TERMS.taxes_terms,
-              delivery_terms: prev.delivery_terms || DIGISET_DEFAULT_TERMS.delivery_terms,
-              warranty_terms: prev.warranty_terms || DIGISET_DEFAULT_TERMS.warranty_terms,
-              insurance_terms: prev.insurance_terms || DIGISET_DEFAULT_TERMS.insurance_terms,
-              loading_terms: prev.loading_terms || DIGISET_DEFAULT_TERMS.loading_terms,
-              installation_terms: prev.installation_terms || DIGISET_DEFAULT_TERMS.installation_terms,
-              permission_terms: prev.permission_terms || DIGISET_DEFAULT_TERMS.permission_terms,
-              payment_terms: prev.payment_terms === '100% advance' ? DIGISET_DEFAULT_TERMS.payment_terms : (prev.payment_terms || DIGISET_DEFAULT_TERMS.payment_terms),
-              validity_terms: prev.validity_terms || DIGISET_DEFAULT_TERMS.validity_terms,
-              statutory_terms: prev.statutory_terms || DIGISET_DEFAULT_TERMS.statutory_terms,
-              force_majeure_terms: prev.force_majeure_terms || DIGISET_DEFAULT_TERMS.force_majeure_terms,
-              arbitration_terms: prev.arbitration_terms || DIGISET_DEFAULT_TERMS.arbitration_terms,
-              cancellation_terms: prev.cancellation_terms || DIGISET_DEFAULT_TERMS.cancellation_terms,
-              freight_terms: prev.freight_terms === 'To Pay' ? DIGISET_DEFAULT_TERMS.insurance_terms : (prev.freight_terms || DIGISET_DEFAULT_TERMS.insurance_terms),
-            } : {})
-          }));
-        }}
-      >
-        {categoryOptions.map((cat) => (
-          <option key={cat} value={cat}>
+  {/* Category Fast-Select Ribbon */}
+  <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1">
+        <span>🏷️</span> Category:
+      </span>
+      {categoryOptions.map((cat) => {
+        const isSelected = (quotationForm.category || 'DEWAS') === cat;
+        return (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => {
+              setQuotationForm((prev) => ({
+                ...prev,
+                category: cat,
+                ...(cat === 'DIGISET' ? {
+                  panel_type: prev.panel_type || DIGISET_DEFAULT_TERMS.panel_type,
+                  sales_person_name: prev.sales_person_name === 'Puneet Choudhary' ? DIGISET_DEFAULT_TERMS.sales_person_name : (prev.sales_person_name || DIGISET_DEFAULT_TERMS.sales_person_name),
+                  sales_person_phone: prev.sales_person_phone === '9179076660' ? DIGISET_DEFAULT_TERMS.sales_person_phone : (prev.sales_person_phone || DIGISET_DEFAULT_TERMS.sales_person_phone),
+                  taxes_terms: prev.taxes_terms || DIGISET_DEFAULT_TERMS.taxes_terms,
+                  delivery_terms: prev.delivery_terms || DIGISET_DEFAULT_TERMS.delivery_terms,
+                  warranty_terms: prev.warranty_terms || DIGISET_DEFAULT_TERMS.warranty_terms,
+                  insurance_terms: prev.insurance_terms || DIGISET_DEFAULT_TERMS.insurance_terms,
+                  loading_terms: prev.loading_terms || DIGISET_DEFAULT_TERMS.loading_terms,
+                  installation_terms: prev.installation_terms || DIGISET_DEFAULT_TERMS.installation_terms,
+                  permission_terms: prev.permission_terms || DIGISET_DEFAULT_TERMS.permission_terms,
+                  payment_terms: prev.payment_terms === '100% advance' ? DIGISET_DEFAULT_TERMS.payment_terms : (prev.payment_terms || DIGISET_DEFAULT_TERMS.payment_terms),
+                  validity_terms: prev.validity_terms || DIGISET_DEFAULT_TERMS.validity_terms,
+                  statutory_terms: prev.statutory_terms || DIGISET_DEFAULT_TERMS.statutory_terms,
+                  force_majeure_terms: prev.force_majeure_terms || DIGISET_DEFAULT_TERMS.force_majeure_terms,
+                  arbitration_terms: prev.arbitration_terms || DIGISET_DEFAULT_TERMS.arbitration_terms,
+                  cancellation_terms: prev.cancellation_terms || DIGISET_DEFAULT_TERMS.cancellation_terms,
+                  freight_terms: prev.freight_terms === 'To Pay' ? DIGISET_DEFAULT_TERMS.insurance_terms : (prev.freight_terms || DIGISET_DEFAULT_TERMS.insurance_terms),
+                } : {})
+              }));
+            }}
+            className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+              isSelected
+                ? 'bg-brand-600 text-white shadow-xs scale-102 ring-1 ring-brand-700'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
             {cat}
-          </option>
-        ))}
-      </select>
+          </button>
+        );
+      })}
+    </div>
+
+    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+      <span>Mode:</span>
+      <span className="font-bold text-slate-700 uppercase bg-slate-100 px-2 py-0.5 rounded">
+        {quotationForm.category || 'DEWAS'}
+      </span>
     </div>
   </div>
 
@@ -1814,33 +1761,174 @@ value={p.product_name}
     />
   )}
 
-  {/* Line Item Details Section */}
-  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+  {/* Compact Customer & Proposal Details (2 Dense Rows) */}
+  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
+    {/* Row 1: Inquiry, Customer, Company, Attention */}
+    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
       <div>
-        <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
-          <span>Line Item Details</span>
-          <span className="rounded bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700">
-            {quotationForm.category || 'DEWAS'} Category
-          </span>
-        </h4>
-        <p className="text-xs text-slate-500">
-          Configure line items and specifications for {quotationForm.category || 'DEWAS'}.
-        </p>
+        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+          From Inquiry (Autofill)
+        </label>
+        <select
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+          value={quotationForm.inquiry_id || ''}
+          onChange={(e) => {
+            const inquiry = inquiries.find((i) => String(i.id) === e.target.value);
+            setQuotationForm({
+              ...quotationForm,
+              inquiry_id: e.target.value,
+              customer_name: inquiry?.customer_name || quotationForm.customer_name,
+              company_name: inquiry?.company || quotationForm.company_name,
+              items: [
+                {
+                  ...quotationForm.items[0],
+                  description: inquiry?.product_interested || quotationForm.items[0]?.description || '',
+                },
+              ],
+            });
+          }}
+        >
+          <option value="">-- Choose Inquiry or Type below --</option>
+          {inquiries.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.customer_name} {i.company ? `(${i.company})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-0.5">
+          Customer Name *
+        </label>
+        <input
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
+          placeholder="e.g. Rahul Sharma"
+          value={quotationForm.customer_name || ''}
+          onChange={(e) => setQuotationForm({ ...quotationForm, customer_name: e.target.value })}
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+          Company Name
+        </label>
+        <input
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+          placeholder="e.g. Pareek Industries Ltd"
+          value={quotationForm.company_name || ''}
+          onChange={(e) => setQuotationForm({ ...quotationForm, company_name: e.target.value })}
+        />
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+          Attention Person
+        </label>
+        <input
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+          placeholder="e.g. Mr. Sharma (Purchase Head)"
+          value={quotationForm.attention_person}
+          onChange={(e) => setQuotationForm({ ...quotationForm, attention_person: e.target.value })}
+        />
+      </div>
+    </div>
+
+    {/* Row 2: Subject, Status, Application & Duty Parameters */}
+    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4 pt-1 border-t border-slate-200/60">
+      <div>
+        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+          Subject
+        </label>
+        <input
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+          placeholder="Offer for Pumps / Equipment"
+          value={quotationForm.subject}
+          onChange={(e) => setQuotationForm({ ...quotationForm, subject: e.target.value })}
+        />
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+          Status
+        </label>
+        <select
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold outline-none focus:border-brand-500 capitalize"
+          value={quotationForm.status}
+          onChange={(e) => setQuotationForm({ ...quotationForm, status: e.target.value })}
+        >
+          <option value="draft">🟡 Draft</option>
+          <option value="sent">🔵 Sent</option>
+          <option value="approved">🟢 Approved</option>
+          <option value="rejected">🔴 Rejected</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+          Application
+        </label>
+        <input
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+          placeholder="Water Supply / Industrial"
+          value={quotationForm.application}
+          onChange={(e) => setQuotationForm({ ...quotationForm, application: e.target.value })}
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+            Flow (m3/hr)
+          </label>
+          <input
+            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+            placeholder="e.g. 150"
+            value={quotationForm.flow}
+            onChange={(e) => setQuotationForm({ ...quotationForm, flow: e.target.value })}
+          />
+        </div>
+        <div className="flex-1">
+          <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">
+            Head (m)
+          </label>
+          <input
+            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+            placeholder="e.g. 45"
+            value={quotationForm.head}
+            onChange={(e) => setQuotationForm({ ...quotationForm, head: e.target.value })}
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Streamlined Line Items Builder */}
+  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5">
+    {/* Line Items Header */}
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+      <div className="flex items-center gap-2">
+        <span className="rounded bg-brand-600 px-2 py-0.5 text-xs font-bold text-white">
+          Line Items ({quotationForm.items.length})
+        </span>
+        <span className="text-xs text-slate-500">
+          Search product to auto-fill specs &amp; pricing in seconds.
+        </span>
       </div>
 
       <button
         type="button"
         onClick={addItem}
-        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 shadow-sm"
+        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs transition-colors"
       >
         <span>+</span>
         <span>Add Line Item</span>
       </button>
     </div>
 
-    {/* Line Item Cards */}
-    <div className="space-y-4">
+    {/* Line Items Cards */}
+    <div className="space-y-2.5">
       {quotationForm.items.map((item, idx) => {
         const qty = Number(item.qty || 0);
         const rate = Number(item.rate || 0);
@@ -1851,92 +1939,119 @@ value={p.product_name}
         const lineNet = qty * unitPrice;
         const lineGst = (lineNet * Number(item.gst_pct || 0)) / 100;
         const lineTotal = lineNet + lineGst;
+        const standardLineTotal = qty * Number(item.custom_fields?.standard_panel_price || 0) * (1 + Number(item.gst_pct || 0) / 100);
+        const automaticLineTotal = qty * Number(item.custom_fields?.automatic_panel_price || 0) * (1 + Number(item.gst_pct || 0) / 100);
 
         return (
-          <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm space-y-3">
-            <div className="flex items-center justify-between border-b pb-2">
-              <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">
-                Line Item #{idx + 1}
-              </span>
-              {quotationForm.items.length > 1 && (
+          <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs space-y-2 transition-shadow hover:shadow-sm">
+            {/* Item Card Header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
+                  {idx + 1}
+                </span>
+                <span className="font-bold text-xs text-slate-800">
+                  {item.model || item.description || `Line Item #${idx + 1}`}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-200">
+                  {quotationForm.category === 'DIGISET' ? (
+                    `Std: ₹${standardLineTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })} | Auto: ₹${automaticLineTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+                  ) : (
+                    `Total: ₹${lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  )}
+                </span>
+
                 <button
                   type="button"
-                  onClick={() => removeItem(idx)}
-                  className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                  onClick={() => duplicateItem(idx)}
+                  className="rounded px-2 py-0.5 text-[11px] font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 transition-colors"
+                  title="Duplicate this line item"
                 >
-                  Delete Item
+                  Duplicate
                 </button>
-              )}
+
+                {quotationForm.items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(idx)}
+                    className="rounded px-2 py-0.5 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors"
+                    title="Delete this line item"
+                  >
+                    ✕ Remove
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Search Product from Catalog */}
-            <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-2.5 space-y-1">
-              <label className="text-xs font-bold text-brand-900 flex items-center gap-1.5">
-                <span>🔍</span>
-                <span>Search & Select Product from Catalog</span>
-                <span className="text-[11px] font-normal text-slate-500">(Auto-fills model, specs & price)</span>
-              </label>
-              <ProductSearchInput
-                products={products}
-                currentModel={item.model || ''}
-                onSelect={(prod) => handleSelectQuotationProduct(idx, prod, false)}
-              />
+            {/* Fast Product Catalog Search */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <ProductSearchInput
+                  products={productsForCategory(quotationForm.category)}
+                  category={quotationForm.category}
+                  currentModel={item.model || ''}
+                  onSelect={(prod) => handleSelectQuotationProduct(idx, prod, false)}
+                />
+              </div>
             </div>
 
-            {/* Category-Specific Fields Grid */}
-            <div className="grid gap-2 md:grid-cols-6">
+            {/* Category-Specific Compact Specs Grid */}
+            <div className="grid gap-1.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-6 bg-slate-50 p-2 rounded-lg border border-slate-200/80">
               {quotationForm.category === 'DEWAS' && (
                 <>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Pump Model</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Model</label>
                     <input
-                      className="w-full rounded border p-2 text-xs font-bold text-slate-800"
-                      placeholder="e.g. KSIL 1-13 / ETERNA 750"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. KSIL 1-13"
                       value={item.model || ''}
                       onChange={(e) => updateItem(idx, 'model', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Motor HP / kW</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">HP / kW</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
                       placeholder="e.g. 1.0 HP"
                       value={item.hp || ''}
                       onChange={(e) => updateItem(idx, 'hp', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Head (m)</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 10 - 78 m"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 10-78m"
                       value={item.head || ''}
                       onChange={(e) => updateItem(idx, 'head', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Flow Rate</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Flow Rate</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
                       placeholder="e.g. 120-312 LPM"
                       value={item.flow || ''}
                       onChange={(e) => updateItem(idx, 'flow', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">SUC x DEL Size</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Size</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 32 x 32 mm"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 32x32 mm"
                       value={item.size || ''}
                       onChange={(e) => updateItem(idx, 'size', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Max Solid Size</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Solid Size</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 18 mm / 22 mm"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 18 mm"
                       value={item.solid_size || ''}
                       onChange={(e) => updateItem(idx, 'solid_size', e.target.value)}
                     />
@@ -1948,40 +2063,40 @@ value={p.product_name}
                 <>
                   {(quotationForm.template_type === 'wadi_fire_fighting' || quotationForm.template_type === 'wadi_fire_fighting_moc') && (
                     <div>
-                      <label className="text-xs font-medium text-slate-600">Application</label>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase">Application</label>
                       <input
-                        className="w-full rounded border p-2 text-xs font-semibold text-slate-800"
-                        placeholder="e.g. Main Pump / Diesel Engine Pump / Jockey Pump"
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-brand-500"
+                        placeholder="e.g. Main Pump"
                         value={item.application || ''}
                         onChange={(e) => updateItem(idx, 'application', e.target.value)}
                       />
                     </div>
                   )}
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Pump Model &amp; Description</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Pump Model</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. UP 250/38 or DB 80/20xe"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. UP 250/38"
                       value={item.model || ''}
                       onChange={(e) => updateItem(idx, 'model', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Head (m)</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 45 m / 100 m"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 45 m"
                       value={item.head || ''}
                       onChange={(e) => updateItem(idx, 'head', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
                       Flow ({quotationForm.template_type === 'wadi_split_case' ? 'LPS' : (quotationForm.template_type === 'wadi_end_suction' ? 'm3/h' : 'm3/hr')})
                     </label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder={quotationForm.template_type === 'wadi_split_case' ? 'e.g. 160 LPS' : (quotationForm.template_type === 'wadi_end_suction' ? 'e.g. 130 m3/h' : 'e.g. 273 m3/hr')}
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 160 LPS"
                       value={item.flow || ''}
                       onChange={(e) => updateItem(idx, 'flow', e.target.value)}
                     />
@@ -1992,46 +2107,87 @@ value={p.product_name}
               {quotationForm.category === 'DIGISET' && (
                 <>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Engine/Set Model</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Engine Model</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
                       placeholder="e.g. Greaves G-125"
                       value={item.model || ''}
                       onChange={(e) => updateItem(idx, 'model', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">KVA Rating</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">KVA Rating</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
                       placeholder="e.g. 62.5 KVA"
                       value={item.hp || ''}
                       onChange={(e) => updateItem(idx, 'hp', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Phase / Voltage</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Phase / Voltage</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 3 Phase 415V"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="3 Phase 415V"
                       value={item.size || ''}
                       onChange={(e) => updateItem(idx, 'size', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Fuel / Cooling</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Fuel / Cooling</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. Diesel / Water Cooled"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="Diesel / Water"
                       value={item.head || ''}
                       onChange={(e) => updateItem(idx, 'head', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Frequency</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Frequency</label>
                     <input
-                      className="w-full rounded border p-2 text-xs"
-                      placeholder="e.g. 50 Hz"
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="50 Hz"
+                      value={item.flow || ''}
+                      onChange={(e) => updateItem(idx, 'flow', e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              {quotationForm.category !== 'DEWAS' && quotationForm.category !== 'WADI' && quotationForm.category !== 'DIGISET' && (
+                <>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Model</label>
+                    <input
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="Product Model"
+                      value={item.model || ''}
+                      onChange={(e) => updateItem(idx, 'model', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">HP / Rating</label>
+                    <input
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 5 HP"
+                      value={item.hp || ''}
+                      onChange={(e) => updateItem(idx, 'hp', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Head (m)</label>
+                    <input
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 20m"
+                      value={item.head || ''}
+                      onChange={(e) => updateItem(idx, 'head', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Flow</label>
+                    <input
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
+                      placeholder="e.g. 100 LPM"
                       value={item.flow || ''}
                       onChange={(e) => updateItem(idx, 'flow', e.target.value)}
                     />
@@ -2040,142 +2196,177 @@ value={p.product_name}
               )}
             </div>
 
-            {/* Standard Commercial Fields */}
-            <div className="grid gap-2 md:grid-cols-5 bg-slate-50 p-2.5 rounded border border-slate-100">
-              <div className="md:col-span-2">
-                <label className="text-xs font-semibold text-slate-700">Product / Item Description *</label>
+            {/* Commercial Pricing Grid */}
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-12 bg-slate-50 p-2 rounded-lg border border-slate-200/80 items-end">
+              <div className="md:col-span-5">
+                <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">Item Description *</label>
                 <input
-                  className="w-full rounded border p-2 text-xs font-medium"
-                  placeholder="Enter detailed description"
+                  className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-brand-500"
+                  placeholder="Enter detailed product description"
                   value={item.description || ''}
                   onChange={(e) => updateItem(idx, 'description', e.target.value)}
                   required
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Quantity</label>
+              <div className="md:col-span-1">
+                <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5 text-center">Qty</label>
                 <input
                   type="number"
                   min="1"
-                  className="w-full rounded border p-2 text-xs"
+                  className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-center text-slate-800 outline-none focus:border-brand-500"
                   value={item.qty}
                   onChange={(e) => updateItem(idx, 'qty', Number(e.target.value))}
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-slate-800">
-                  Rate / Base Price (Rs.) *
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  placeholder="Rate (Rs.)"
-                  className="w-full rounded-lg border-2 border-indigo-300 bg-white p-2 text-xs font-bold text-indigo-900 shadow-xs focus:border-indigo-600 focus:outline-none"
-                  value={item.rate !== undefined ? item.rate : ''}
-                  onChange={(e) => updateItem(idx, 'rate', e.target.value === '' ? '' : Number(e.target.value))}
-                  required
-                />
-              </div>
+              {quotationForm.category === 'DIGISET' ? (
+                <>
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-bold text-indigo-900 uppercase mb-0.5">Standard Rate (₹) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Std Rate"
+                      className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs font-bold text-indigo-900 outline-none focus:border-indigo-500"
+                      value={item.custom_fields?.standard_panel_price ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        updateItemCustomField(idx, 'standard_panel_price', value);
+                        updateItem(idx, 'rate', value === '' ? '' : Number(value));
+                        updateItem(idx, 'discounted_price', value === '' ? '' : Number(value));
+                      }}
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-bold text-emerald-900 uppercase mb-0.5">Auto AMF Rate (₹) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="AMF Rate"
+                      className="w-full rounded border border-emerald-400 bg-white px-2 py-1.5 text-xs font-bold text-emerald-900 outline-none focus:border-emerald-500"
+                      value={item.custom_fields?.automatic_panel_price ?? ''}
+                      onChange={(e) => updateItemCustomField(idx, 'automatic_panel_price', e.target.value)}
+                      required
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-800 uppercase mb-0.5">Base Rate (₹) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Rate (₹)"
+                      className="w-full rounded border border-indigo-300 bg-white px-2 py-1.5 text-xs font-bold text-indigo-900 outline-none focus:border-indigo-500"
+                      value={item.rate !== undefined ? item.rate : ''}
+                      onChange={(e) => updateItem(idx, 'rate', e.target.value === '' ? '' : Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-0.5">Disc. Price (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Net Price"
+                      className="w-full rounded border border-emerald-400 bg-white px-2 py-1.5 text-xs font-bold text-emerald-900 outline-none focus:border-emerald-600"
+                      value={item.discounted_price !== undefined ? item.discounted_price : ''}
+                      onChange={(e) => updateItem(idx, 'discounted_price', e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                </>
+              )}
 
-              <div>
-                <label className="text-xs font-bold text-emerald-800">
-                  Each Disc. Price (Rs.)
-                </label>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">GST %</label>
                 <input
                   type="number"
                   min="0"
-                  step="any"
-                  placeholder="Discounted Price (Rs.)"
-                  className="w-full rounded-lg border-2 border-emerald-400 bg-white p-2 text-xs font-bold text-emerald-900 shadow-xs focus:border-indigo-600 focus:outline-none"
-                  value={item.discounted_price !== undefined ? item.discounted_price : ''}
-                  onChange={(e) => updateItem(idx, 'discounted_price', e.target.value === '' ? '' : Number(e.target.value))}
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700">GST %</label>
-                <input
-                  type="number"
-                  min="0"
-                  className="w-full rounded border p-2 text-xs"
+                  className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-center text-slate-800 outline-none focus:border-brand-500"
                   value={item.gst_pct}
                   onChange={(e) => updateItem(idx, 'gst_pct', Number(e.target.value))}
                 />
               </div>
             </div>
-
-            <div className="flex justify-end text-xs font-bold text-slate-700 pt-1">
-              Line Total: Rs. {lineTotal.toFixed(2)}
-            </div>
           </div>
         );
       })}
     </div>
-
-    {/* Section Summary & Grand Total */}
-    <div className="space-y-3 pt-2">
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={addItem}
-          className="rounded-lg border border-dashed border-emerald-400 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
-        >
-          + Add Another Item
-        </button>
-
-        <div className="text-right">
-          <p className="text-xs text-slate-500 font-medium">Total Items: {quotationForm.items.length}</p>
-        </div>
-      </div>
-
-      {/* Grand Total Summary Box */}
-      <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-600">
-            <div>
-              <span className="font-semibold text-slate-700">Total Qty:</span>{' '}
-              <span className="font-bold text-slate-900">{grandSummary.totalQty}</span>
-            </div>
-            <div>
-              <span className="font-semibold text-slate-700">Subtotal:</span>{' '}
-              <span className="font-bold text-slate-900">₹{grandSummary.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-            {grandSummary.totalDiscount > 0 && (
-              <div>
-                <span className="font-semibold text-slate-700">Discount:</span>{' '}
-                <span className="font-bold text-rose-600">-₹{grandSummary.totalDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-            )}
-            <div>
-              <span className="font-semibold text-slate-700">GST:</span>{' '}
-              <span className="font-bold text-slate-900">₹{grandSummary.totalGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 px-4 py-2 rounded-lg self-end sm:self-auto">
-            <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">Grand Total:</span>
-            <span className="text-base font-extrabold text-indigo-950">
-              ₹{grandSummary.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
-  {/* Terms & Sign-off Details */}
+  {/* Commercial Terms & Sign-off Details */}
   <CommercialTermsEditor
     values={quotationForm}
     onChange={(field, val) => setQuotationForm((prev) => ({ ...prev, [field]: val }))}
     isDigiset={quotationForm.category === 'DIGISET'}
   />
 
-  <button type="submit" className="rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-md">
-    Create Quotation
-  </button>
+  {/* Sticky Bottom Summary & Instant Submit Bar */}
+  <div className="sticky bottom-2 z-30 rounded-xl border border-indigo-300/80 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+        <div>
+          <span>Items: </span>
+          <b className="text-slate-900 font-mono">{quotationForm.items.length}</b>
+        </div>
+        <div>
+          <span>Qty: </span>
+          <b className="text-slate-900 font-mono">{grandSummary.totalQty}</b>
+        </div>
+        <div>
+          <span>Subtotal: </span>
+          <b className="text-slate-900 font-mono">₹{grandSummary.subtotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b>
+        </div>
+        {grandSummary.totalDiscount > 0 && (
+          <div className="text-rose-600">
+            <span>Disc: </span>
+            <b className="font-mono">-₹{grandSummary.totalDiscount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b>
+          </div>
+        )}
+        <div>
+          <span>GST: </span>
+          <b className="text-slate-900 font-mono">₹{grandSummary.totalGst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b>
+        </div>
+        <div className="rounded-lg bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-900 border border-emerald-300">
+          Grand Total: ₹{grandSummary.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 self-end sm:self-auto">
+        <button
+          type="button"
+          onClick={addItem}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors shadow-xs"
+        >
+          + Add Item
+        </button>
+
+        <button
+          type="submit"
+          disabled={createQuotationMutation.isPending}
+          className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+        >
+          {createQuotationMutation.isPending ? (
+            <>
+              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <span>Creating...</span>
+            </>
+          ) : (
+            <>
+              <span>⚡ Create Quotation</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
 </form>
 ) : null}
 
@@ -2656,12 +2847,15 @@ Cancel
         {/* Items List */}
         <div className="space-y-3">
           {(editingQuotation.items || []).map((item, idx) => {
+            const qty = Number(item.qty || 0);
             const isDewas = (editingQuotation.category || '').toUpperCase() === 'DEWAS';
             const lineBase = Number(item.qty || 0) * Number(item.rate || 0);
             const lineDiscount = isDewas ? 0 : (lineBase * Number(item.discount_pct || 0)) / 100;
             const lineNet = lineBase - lineDiscount;
             const lineGst = (lineNet * Number(item.gst_pct || 0)) / 100;
             const lineTotal = lineNet + lineGst;
+            const standardLineTotal = qty * Number(item.custom_fields?.standard_panel_price || 0) * (1 + Number(item.gst_pct || 0) / 100);
+            const automaticLineTotal = qty * Number(item.custom_fields?.automatic_panel_price || 0) * (1 + Number(item.gst_pct || 0) / 100);
 
             return (
               <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs space-y-3">
@@ -2688,7 +2882,8 @@ Cancel
                     <span className="text-[11px] font-normal text-slate-500">(Auto-fills model, specs & price)</span>
                   </label>
                   <ProductSearchInput
-                    products={products}
+                    products={productsForCategory(editingQuotation.category)}
+                    category={editingQuotation.category}
                     currentModel={item.model || ''}
                     onSelect={(prod) => handleSelectQuotationProduct(idx, prod, true)}
                   />
@@ -2910,7 +3105,9 @@ Cancel
                 </div>
 
                 <div className="flex justify-end text-xs font-bold text-slate-700 pt-0.5">
-                  Item Total: Rs. {lineTotal.toFixed(2)}
+                  {editingQuotation.category === 'DIGISET' ? (
+                    <span className="flex flex-wrap gap-x-4"><span>Standard total: ₹{standardLineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span><span>Automatic / AMF total: ₹{automaticLineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></span>
+                  ) : `Item Total: Rs. ${lineTotal.toFixed(2)}`}
                 </div>
               </div>
             );
@@ -2949,6 +3146,22 @@ Cancel
             </div>
           </div>
         </div>
+        {editingQuotation.category === 'DIGISET' && (
+          <div className="grid gap-3 md:grid-cols-2 mt-3">
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs">
+              <div className="mb-1 font-bold text-indigo-900">Standard Panel Total</div>
+              <div>Subtotal: <b>₹{editGrandSummary.standardSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b></div>
+              <div>GST: <b>₹{editGrandSummary.standardGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b></div>
+              <div className="mt-1 text-sm font-extrabold text-indigo-950">Grand Total: ₹{editGrandSummary.standardGrandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs">
+              <div className="mb-1 font-bold text-emerald-900">Automatic Panel / AMF Total</div>
+              <div>Subtotal: <b>₹{editGrandSummary.automaticSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b></div>
+              <div>GST: <b>₹{editGrandSummary.automaticGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b></div>
+              <div className="mt-1 text-sm font-extrabold text-emerald-950">Grand Total: ₹{editGrandSummary.automaticGrandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+        )}
 
         {/* Terms & Sign-off Details Inside Modal */}
         <CommercialTermsEditor
@@ -3020,6 +3233,7 @@ Cancel
                   discounted_price: it.discounted_price !== undefined && it.discounted_price !== null && it.discounted_price !== '' ? Number(it.discounted_price) : undefined,
                   discount_pct: Number(it.discount_pct || 0),
                   gst_pct: Number(it.gst_pct || 18),
+                  custom_fields: it.custom_fields || {},
                 })),
               },
             });

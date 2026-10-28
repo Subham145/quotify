@@ -69,9 +69,9 @@ export function digisetTemplate(data) {
   const renderedItems = itemsList.map((item) => {
     const cf = item.custom_fields || {};
     const model = cf.model || item.model || item.product_name || item.description || 'Greaves Silent DG Set';
-    const kva = cf.hp || item.hp || cf.kva || item.kva || '';
-    const phase = cf.size || item.size || '3 Phase';
-    const ratingStr = kva ? `${kva} ${phase}` : (item.description || 'DG Set');
+    const kva = cf.hp || item.hp || cf.kva || item.kva || item.model || item.description || '';
+    const ratingMatch = String(kva).match(/\d+(?:\.\d+)?/);
+    const ratingStr = `${ratingMatch ? ratingMatch[0] : kva} KVA / ${cf.phase || '3 Phase'}`;
     const qty = String(item.qty || 1).padStart(2, '0');
 
     const discountedPrice = (item.discounted_price !== undefined && item.discounted_price !== null && item.discounted_price !== '')
@@ -82,37 +82,41 @@ export function digisetTemplate(data) {
               ? (item.discount_pct ? Number(item.rate) * (1 - Number(item.discount_pct) / 100) : Number(item.rate))
               : 0));
 
-    const priceFormatted = discountedPrice > 0 ? formatCurrency(discountedPrice) + '/-' : (item.rate ? formatCurrency(item.rate) + '/-' : 'Call for Price');
+    const standardPrice = cf.standard_panel_price;
+    const automaticPrice = cf.automatic_panel_price;
+    const formatPanelPrice = (value, fallback) => {
+      const amount = value !== undefined && value !== null && value !== '' ? Number(value) : fallback;
+      return amount > 0 ? `${formatCurrency(amount)}/-` : 'Call for Price';
+    };
+    const standardPriceFormatted = formatPanelPrice(standardPrice, discountedPrice);
+    const automaticPriceFormatted = formatPanelPrice(automaticPrice, discountedPrice);
 
     return `
       <tr>
         <td class="rating-cell font-bold bg-highlight">${ratingStr}</td>
         <td class="center font-bold bg-highlight">${qty}</td>
-        <td class="right font-bold bg-highlight">${priceFormatted}</td>
+        <td class="right font-bold bg-highlight">${standardPriceFormatted}</td>
+        <td class="right font-bold bg-highlight">${automaticPriceFormatted}</td>
       </tr>
     `;
   }).join('');
 
   // Extract KVA summary for subject/cover text
-  const kvaList = itemsList.map(it => it.hp || it.custom_fields?.hp || it.model || '').filter(Boolean).join(' / ');
-  const displayKva = kvaList || '....';
+  const firstItem = itemsList[0] || {};
+  const kvaSource = firstItem.hp || firstItem.custom_fields?.hp || firstItem.model || firstItem.description || '';
+  const kvaMatch = String(kvaSource).match(/\d+(?:\.\d+)?/);
+  const displayKva = kvaMatch ? kvaMatch[0] : '....';
+  const phaseSource = firstItem.custom_fields?.phase || firstItem.size || '3 Phase';
+  const phaseMatch = String(phaseSource).match(/\d+\s*Phase/i);
+  const displayPhase = phaseMatch ? phaseMatch[0].replace(/\s+/g, ' ') : '3 Phase';
 
   // Determine Control Panel wording based on panel_type selection
   const rawPanel = (data.panel_type || '').toLowerCase();
-  let panelSubject = 'STANDERD/AUTOMATIC CONTROL PANEL';
-  let panelBody = 'STANDERD / AUTOMATIC CONTROL PANEL';
-  let panelPriceHeader = 'STANDERD / AUTOMATIC Panel';
   let panelUnitDesc = 'STANDERD / AUTOMATIC CONTROL PANEL WITH RMU UNIT';
 
   if (rawPanel.includes('auto') && !rawPanel.includes('standard') && !rawPanel.includes('both')) {
-    panelSubject = 'AUTOMATIC CONTROL PANEL';
-    panelBody = 'AUTOMATIC CONTROL PANEL';
-    panelPriceHeader = 'AUTOMATIC Panel';
     panelUnitDesc = 'AUTOMATIC CONTROL PANEL (AMF PANEL) WITH RMU UNIT';
   } else if (rawPanel.includes('standard') && !rawPanel.includes('auto') && !rawPanel.includes('both')) {
-    panelSubject = 'STANDERD CONTROL PANEL';
-    panelBody = 'STANDERD CONTROL PANEL';
-    panelPriceHeader = 'STANDERD Panel';
     panelUnitDesc = 'STANDERD CONTROL PANEL WITH RMU UNIT';
   }
 
@@ -449,14 +453,13 @@ export function digisetTemplate(data) {
       </div>
 
       <div class="subject-box">
-        SUB: QUOTATION FOR <span class="highlight">${displayKva} KVA 3 PHASE GREAVES COTTON ${panelSubject} SILENT D.G. SET</span>
+        SUB: QUOTATION FOR <span class="highlight">${displayKva} KVA ${displayPhase} GREAVES POWER STANDARD/AUTOMATIC CONTROL PANEL SILENT D.G. SET (As per CPCB-IV norms)</span>
       </div>
 
       <div class="letter-body">
         <p>Dear Sir,</p>
         <p>
-          As discussed and desired by you, we are pleased to submit our quotation for 
-          <span class="highlight" style="font-weight: bold;">${displayKva} KVA 3 Phase Greaves Cotton ${panelBody} Silent D.G. Set</span> for your favorable consideration.
+          As discussed and desired by you, we are pleased to submit our quotation for <span class="highlight" style="font-weight: bold;">${displayKva} KVA ${displayPhase} Greaves Power STANDARD/AUTOMATIC CONTROL PANEL Silent D.G. Set</span> for your favorable consideration.
         </p>
         <p>
           We believe that you will find our offer as quite attractive and cost effective to your needs.
@@ -500,16 +503,17 @@ export function digisetTemplate(data) {
       <table class="dg-price-table">
         <thead>
           <tr>
-            <th width="65%">Description of DG</th>
-            <th width="10%">Qty</th>
-            <th width="25%">Basic price<br>with ${panelPriceHeader}<br>(in Rs.) (Each)</th>
+            <th width="55%">Description of DG</th>
+            <th width="8%">Qty</th>
+            <th width="18.5%">Basic price with<br>Standard Panel<br>(in Rs.) (Each)</th>
+            <th width="18.5%">Basic price with<br>Automatic Panel (AMF)<br>(in Rs.) (Each)</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td class="spec-desc-box">
               <div class="highlight-yellow" style="font-weight: bold; margin-bottom: 6px;">
-                Supply of Greaves Make Silent D.G. Set (${displayKva} KVA / 3 Phase, Canopied Diesel Generator)
+                Supply of Greaves Make Silent D.G. Set (${displayKva} KVA / ${displayPhase}, Canopied Diesel Generator)
               </div>
               <p style="margin-bottom: 6px;">
                 Set powered with Greaves Make 4/6 Cylinder inline, Bore Stroke matching rating, Radiator Cooled Greaves Engine Model, TCAC WITH Mech/G2** CLASS GOVERNOR at 0.8 power factor, at NTP Conditions, 415V, 50 Hz, coupled with 3 Phase Alternator (Leroy-Somer / Crompton Greaves / Stamford), Battery with Cables, Fuel tank, AVM Pads &amp; other Standard Accessories mentioned in our Annexure enclosed. The Silent D.G. Set will be installed with –
@@ -517,6 +521,7 @@ export function digisetTemplate(data) {
               <div style="font-weight: bold; margin-top: 6px;">${panelUnitDesc}</div>
               <div style="font-weight: bold; color: #b91c1c; margin-top: 2px;">5 YEAR WARRANTY ON COMPLETE DG.</div>
             </td>
+            <td></td>
             <td></td>
             <td></td>
           </tr>
@@ -528,7 +533,7 @@ export function digisetTemplate(data) {
             </tr>
           `}
           <tr>
-            <td colspan="3" class="right font-bold" style="border: none; padding-top: 10px; color: #000;">
+              <td colspan="4" class="right font-bold" style="border: none; padding-top: 10px; color: #000;">
               <span class="highlight-yellow" style="padding: 2px 6px;">(GST@18% Extra)</span>
             </td>
           </tr>
