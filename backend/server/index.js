@@ -805,7 +805,7 @@ app.post('/api/products/bulk-create', requireAuth, (req, res) => {
 
   const findExisting = db.prepare(`
     SELECT id FROM products 
-    WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(?))
+    WHERE (LOWER(TRIM(product_name)) = LOWER(TRIM(?)) OR LOWER(TRIM(code)) = LOWER(TRIM(?)))
       AND (category = ? OR (? IS NULL AND category IS NULL))
     LIMIT 1
   `);
@@ -849,9 +849,9 @@ app.post('/api/products/bulk-create', requireAuth, (req, res) => {
       }
 
       const pCategory = p.category || 'DEWAS';
-      const existing = findExisting.get(p.product_name.trim(), pCategory, pCategory);
-
       const codeVal = p.code || p.product_name || '';
+      const existing = findExisting.get(p.product_name.trim(), codeVal.trim(), pCategory, pCategory);
+
       const specsVal = p.specs ? (typeof p.specs === 'object' ? JSON.stringify(p.specs) : String(p.specs)) : '';
       const hpVal = p.hp || '';
       const kwVal = p.kw || '';
@@ -1488,8 +1488,9 @@ app.post('/api/quotations', requireAuth, (req, res) => {
   const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get();
   const prefix = settings?.quotation_prefix || 'QT-';
   const quotationNumber = p.quotation_number || nextDocNo(prefix, 'quotation_no');
-  const templateType = p.template_type || 'pump';
   const category = p.category || 'DEWAS';
+  const categoryUpper = String(category).trim().toUpperCase();
+  const templateType = p.template_type || (categoryUpper === 'DIGISET' ? 'digiset' : (categoryUpper === 'WADI' ? 'wadi_split_case' : 'pump'));
 
   if (p.company_name && !p.allow_duplicate_company) {
     const dup = db
@@ -2137,18 +2138,68 @@ app.get('/api/reports/inquiries', requireAuth, (req, res) => {
 });
 
 app.get('/api/reports/quotations', requireAuth, (req, res) => {
-  const userFilter = req.user.role === 'Admin' ? '' : ' WHERE assigned_to = ?';
-  const params = req.user.role === 'Admin' ? [] : [req.user.id];
-  
-  const status = db.prepare(`SELECT status, COUNT(*) as count FROM quotations${userFilter} GROUP BY status`).all(...params);
-  const totals = db.prepare(`SELECT SUM(total_amount) as total_value, SUM(CASE WHEN status = 'approved' THEN total_amount ELSE 0 END) as approved_value FROM quotations${userFilter}`).get(...params);
-  const details = db.prepare(`SELECT quotation_number, customer_name, company_name, status, total_amount, created_at FROM quotations${userFilter} ORDER BY id DESC`).all(...params);
-  
-  res.json({ status, totals, details });
+  const canSeeAllQuotations = ['Admin', 'SuperAdmin'].includes(req.user.role);
+  const where = canSeeAllQuotations ? '' : 'WHERE q.assigned_to = ?';
+  const params = canSeeAllQuotations ? [] : [req.user.id];
+  const rows = db.prepare(`
+    SELECT q.id, q.quotation_number, q.customer_name, q.company_name,
+      q.category, q.status, q.total_amount, q.subtotal, q.total_discount,
+      q.total_gst, q.created_at, q.template_type, q.sales_person_name,
+      u.name AS assigned_user_name
+    FROM quotations q
+    LEFT JOIN users u ON q.assigned_to = u.id
+    ${where}
+    ORDER BY q.id DESC
+  `).all(...params);
+  const normalizeStatus = (value) => {
+    const status = String(value || 'draft').toLowerCase();
+    if (['won', 'approved', 'converted'].includes(status)) return 'won';
+    if (['lost', 'rejected'].includes(status)) return 'lost';
+    if (status === 'sent') return 'sent';
+    return 'draft';
+  };
+  const totals = rows.reduce((sum, row) => {
+    const status = normalizeStatus(row.status);
+    sum.total_count += 1;
+    sum.total_value += Number(row.total_amount || 0);
+    if (status !== 'draft') sum.sent_count += 1;
+    if (status === 'won') {
+      sum.won_count += 1;
+      sum.won_value += Number(row.total_amount || 0);
+    }
+    if (status === 'lost') {
+      sum.lost_count += 1;
+      sum.lost_value += Number(row.total_amount || 0);
+    }
+    return sum;
+  }, { total_count: 0, sent_count: 0, won_count: 0, lost_count: 0, total_value: 0, won_value: 0, lost_value: 0 });
+  const statusCounts = new Map();
+  const categoryMap = new Map();
+  for (const row of rows) {
+    const status = normalizeStatus(row.status);
+    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+    const category = String(row.category || '').trim() || 'Uncategorized';
+    const stats = categoryMap.get(category) || { category, total_count: 0, sent_count: 0, won_count: 0, lost_count: 0 };
+    stats.total_count += 1;
+    if (status !== 'draft') stats.sent_count += 1;
+    if (status === 'won') stats.won_count += 1;
+    if (status === 'lost') stats.lost_count += 1;
+    categoryMap.set(category, stats);
+  }
+  totals.total_value = Number(totals.total_value.toFixed(2));
+  totals.won_value = Number(totals.won_value.toFixed(2));
+  totals.lost_value = Number(totals.lost_value.toFixed(2));
+  res.json({
+    status: [...statusCounts].map(([status, count]) => ({ status, count })),
+    totals,
+    categories: [...categoryMap.values()].sort((a, b) => a.category.localeCompare(b.category)),
+    details: rows,
+  });
 });
 
 app.get('/api/reports/users', requireAuth, (req, res) => {
-  const userFilter = req.user.role === 'Admin' ? '' : ` WHERE u.id = ${req.user.id}`;
+  const canSeeAllQuotations = ['Admin', 'SuperAdmin'].includes(req.user.role);
+  const userFilter = canSeeAllQuotations ? '' : ` WHERE u.id = ${Number(req.user.id)}`;
   const rows = db
     .prepare(
       `SELECT
@@ -2156,7 +2207,8 @@ app.get('/api/reports/users', requireAuth, (req, res) => {
         u.name,
         COUNT(q.id) as quotation_count,
         SUM(q.total_amount) as total_value,
-        SUM(CASE WHEN q.status IN ('approved','converted') THEN 1 ELSE 0 END) as won_count
+        SUM(CASE WHEN LOWER(q.status) IN ('sent','won','lost','approved','rejected','converted') THEN 1 ELSE 0 END) as sent_count,
+        SUM(CASE WHEN LOWER(q.status) IN ('won','approved','converted') THEN 1 ELSE 0 END) as won_count
       FROM users u
       LEFT JOIN quotations q ON q.assigned_to = u.id
       ${userFilter}
@@ -2167,24 +2219,26 @@ app.get('/api/reports/users', requireAuth, (req, res) => {
 
   const data = rows.map((r) => ({
     ...r,
-    conversion_rate: r.quotation_count ? Number(((r.won_count / r.quotation_count) * 100).toFixed(2)) : 0,
+    conversion_rate: r.sent_count ? Number(((r.won_count / r.sent_count) * 100).toFixed(2)) : 0,
   }));
   res.json(data);
 });
 
 app.get('/api/reports/products', requireAuth, (req, res) => {
-  const userFilter = req.user.role === 'Admin' ? '' : ' WHERE q.assigned_to = ?';
-  const params = req.user.role === 'Admin' ? [] : [req.user.id];
+  const canSeeAllQuotations = ['Admin', 'SuperAdmin'].includes(req.user.role);
+  const userFilter = canSeeAllQuotations ? '' : ' WHERE q.assigned_to = ?';
+  const params = canSeeAllQuotations ? [] : [req.user.id];
   
   const rows = db
     .prepare(
       `SELECT
         COALESCE(p.product_name, qi.description) as product,
         SUM(qi.qty) as quantity,
-        SUM(qi.line_total) as revenue
+        SUM(CASE WHEN COALESCE(item_totals.item_total, 0) != 0 THEN qi.line_total * q.total_amount / item_totals.item_total ELSE qi.line_total END) as revenue
       FROM quotation_items qi
       LEFT JOIN products p ON p.id = qi.product_id
       LEFT JOIN quotations q ON q.id = qi.quotation_id
+      LEFT JOIN (SELECT quotation_id, SUM(line_total) as item_total FROM quotation_items GROUP BY quotation_id) item_totals ON item_totals.quotation_id = q.id
       ${userFilter}
       GROUP BY COALESCE(p.product_name, qi.description)
       ORDER BY revenue DESC`
@@ -2194,19 +2248,21 @@ app.get('/api/reports/products', requireAuth, (req, res) => {
 });
 
 app.get('/api/reports/groups', requireAuth, (req, res) => {
-  const userFilter = req.user.role === 'Admin' ? '' : ' WHERE q.assigned_to = ?';
-  const params = req.user.role === 'Admin' ? [] : [req.user.id];
+  const canSeeAllQuotations = ['Admin', 'SuperAdmin'].includes(req.user.role);
+  const userFilter = canSeeAllQuotations ? '' : ' WHERE q.assigned_to = ?';
+  const params = canSeeAllQuotations ? [] : [req.user.id];
   
   const rows = db
     .prepare(
       `SELECT
         COALESCE(g.group_name, 'Ungrouped') as group_name,
         SUM(qi.qty) as quantity,
-        SUM(qi.line_total) as revenue
+        SUM(CASE WHEN COALESCE(item_totals.item_total, 0) != 0 THEN qi.line_total * q.total_amount / item_totals.item_total ELSE qi.line_total END) as revenue
       FROM quotation_items qi
       LEFT JOIN products p ON p.id = qi.product_id
       LEFT JOIN product_groups g ON g.id = p.group_id
       LEFT JOIN quotations q ON q.id = qi.quotation_id
+      LEFT JOIN (SELECT quotation_id, SUM(line_total) as item_total FROM quotation_items GROUP BY quotation_id) item_totals ON item_totals.quotation_id = q.id
       ${userFilter}
       GROUP BY COALESCE(g.group_name, 'Ungrouped')
       ORDER BY revenue DESC`
@@ -2310,10 +2366,9 @@ function renderQuotationHtml(quotation, items, settings, templateQuery) {
   };
 
   const categoryUpper = (quotation.category || '').toUpperCase();
-  const templateName = (
-    templateQuery ||
-    quotation.template_type ||
-    (categoryUpper === 'DIGISET' ? 'digiset' : (categoryUpper === 'WADI' ? 'wadi_split_case' : 'dewas'))
+  const templateName = (categoryUpper === 'DIGISET'
+    ? 'digiset'
+    : (templateQuery || quotation.template_type || (categoryUpper === 'WADI' ? 'wadi_split_case' : 'dewas'))
   ).toLowerCase();
 
   switch (templateName) {
