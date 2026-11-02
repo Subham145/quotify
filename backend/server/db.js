@@ -504,6 +504,34 @@ export function initDb() {
       seedTx();
       console.log('[Seed] Auto-seed finished successfully!');
     }
+
+    // Auto-seed missing DIGISET catalog products on live servers that already have existing products
+    if (fs.existsSync(seedFilePath)) {
+      const digisetCount = db.prepare("SELECT count(*) as count FROM products WHERE category = 'DIGISET'").get();
+      if (!digisetCount || digisetCount.count === 0) {
+        console.log('[Seed] No DIGISET products found in DB. Auto-seeding DIGISET products from seedData.json...');
+        const raw = fs.readFileSync(seedFilePath, 'utf-8');
+        const data = JSON.parse(raw);
+        const digisetRows = (data.products || []).filter((p) => p.category === 'DIGISET');
+        if (digisetRows.length > 0) {
+          try {
+            db.prepare("INSERT OR IGNORE INTO product_categories (name, is_active) VALUES ('DIGISET', 1)").run();
+          } catch (_) {}
+
+          const seedDigiTx = db.transaction(() => {
+            for (const row of digisetRows) {
+              const keys = Object.keys(row);
+              const placeholders = keys.map(() => '?').join(', ');
+              const columns = keys.map((k) => `"${k}"`).join(', ');
+              const values = keys.map((k) => row[k]);
+              db.prepare(`INSERT OR REPLACE INTO products (${columns}) VALUES (${placeholders})`).run(...values);
+            }
+          });
+          seedDigiTx();
+          console.log(`[Seed] Successfully auto-seeded ${digisetRows.length} DIGISET products on live!`);
+        }
+      }
+    }
   } catch (err) {
     console.warn('[Seed] Auto-seed check warning:', err.message);
   }

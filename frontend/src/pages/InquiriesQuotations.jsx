@@ -506,6 +506,22 @@ export default function InquiriesQuotations() {
   const [manualSource, setManualSource] = useState('');
 
   const [parsingPdf, setParsingPdf] = useState(false);
+  const [syncingDigiset, setSyncingDigiset] = useState(false);
+
+  const handleSyncDigiset = async () => {
+    try {
+      setSyncingDigiset(true);
+      setActionError('');
+      const res = await api('/products/sync-digiset', { method: 'POST' });
+      setActionMessage(res.message || 'DIGISET catalog synced successfully!');
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product-categories'] });
+    } catch (err) {
+      setActionError(err.message || 'Failed to sync DIGISET catalog.');
+    } finally {
+      setSyncingDigiset(false);
+    }
+  };
 
   const [quotationForm, setQuotationForm] = useState({
     inquiry_id: '',
@@ -1997,6 +2013,23 @@ value={p.product_name}
                 />
               </div>
             </div>
+
+            {quotationForm.category === 'DIGISET' && productsForCategory('DIGISET').length === 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-center justify-between gap-2 shadow-xs">
+                <div>
+                  <span className="font-bold flex items-center gap-1">⚠️ DIGISET catalog products live database me load nahi hain.</span>
+                  <p className="text-[11px] text-amber-700">16 standard models (20 KVA se 750 KVA) live database me load karne ke liye yahan click karein:</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSyncDigiset}
+                  disabled={syncingDigiset}
+                  className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 font-bold text-white shadow-xs hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                >
+                  {syncingDigiset ? 'Syncing...' : '⚡ Sync DIGISET Models'}
+                </button>
+              </div>
+            )}
 
             {/* Category-Specific Compact Specs Grid */}
             <div className="grid gap-1.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-6 bg-slate-50 p-2 rounded-lg border border-slate-200/80">

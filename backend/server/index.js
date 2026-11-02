@@ -753,6 +753,41 @@ app.get('/api/products', requireAuth, (req, res) => {
   res.json(rows);
 });
 
+app.post('/api/products/sync-digiset', requireAuth, (_req, res) => {
+  try {
+    const seedFilePath = path.resolve(__dirname, '../seedData.json');
+    if (!fs.existsSync(seedFilePath)) {
+      return res.status(404).json({ message: 'seedData.json not found on server' });
+    }
+    const raw = fs.readFileSync(seedFilePath, 'utf-8');
+    const data = JSON.parse(raw);
+    const digisetRows = (data.products || []).filter((p) => p.category === 'DIGISET');
+    if (!digisetRows.length) {
+      return res.status(404).json({ message: 'No DIGISET products found in seedData.json' });
+    }
+
+    try {
+      db.prepare("INSERT OR IGNORE INTO product_categories (name, is_active) VALUES ('DIGISET', 1)").run();
+    } catch (_) {}
+
+    const seedTx = db.transaction(() => {
+      for (const row of digisetRows) {
+        const keys = Object.keys(row);
+        const placeholders = keys.map(() => '?').join(', ');
+        const columns = keys.map((k) => `"${k}"`).join(', ');
+        const values = keys.map((k) => row[k]);
+        db.prepare(`INSERT OR REPLACE INTO products (${columns}) VALUES (${placeholders})`).run(...values);
+      }
+    });
+    seedTx();
+
+    const count = db.prepare("SELECT count(*) as count FROM products WHERE category = 'DIGISET'").get()?.count || 0;
+    res.json({ ok: true, message: `Successfully synced ${digisetRows.length} DIGISET products to database.`, count });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to sync DIGISET products: ' + err.message });
+  }
+});
+
 app.get('/api/products/export/csv', requireAuth, (_req, res) => {
   const rows = db
     .prepare('SELECT product_name, code, category, hsn_code, price, gst_rate, unit, stock_quantity FROM products ORDER BY id DESC')

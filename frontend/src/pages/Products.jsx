@@ -63,6 +63,22 @@ export default function Products() {
   const [parsedProducts, setParsedProducts] = useState([]);
   const [selectedIndices, setSelectedIndices] = useState(new Set());
   const [importing, setImporting] = useState(false);
+  const [syncingDigiset, setSyncingDigiset] = useState(false);
+
+  const handleSyncDigiset = async () => {
+    try {
+      setSyncingDigiset(true);
+      setActionError('');
+      const res = await api('/products/sync-digiset', { method: 'POST' });
+      setActionSuccess(res.message || 'DIGISET catalog synced successfully!');
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product-categories'] });
+    } catch (err) {
+      setActionError(err.message || 'Failed to sync DIGISET catalog.');
+    } finally {
+      setSyncingDigiset(false);
+    }
+  };
 
   const { data: groupsRaw } = useQuery({ queryKey: ['product-groups'], queryFn: () => api('/product-groups') });
   const { data: subGroupsRaw } = useQuery({ queryKey: ['product-subgroups'], queryFn: () => api('/product-subgroups') });
@@ -765,6 +781,15 @@ export default function Products() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader title="Products & Services" description="Manage products and import models from catalog files." />
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSyncDigiset}
+            disabled={syncingDigiset}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-3.5 py-2 text-xs font-semibold text-purple-800 shadow-sm hover:bg-purple-100 transition disabled:opacity-50"
+            title="Sync all 16 official DIGISET models into database"
+          >
+            <span>⚡ {syncingDigiset ? 'Syncing...' : 'Sync DIGISET Catalog'}</span>
+          </button>
           <button
             type="button"
             onClick={() => {
