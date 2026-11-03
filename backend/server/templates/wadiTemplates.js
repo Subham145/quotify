@@ -243,6 +243,25 @@ const COMMON_CSS = `
 // ==========================================
 // 1. WADI TEMPLATE 1: Split Case Pump Set (UP Series / LPS)
 // ==========================================
+
+function getWadiDynamicMoc(data, items, defaultFallback) {
+  if (data.material_construction && data.material_construction.trim()) {
+    return data.material_construction;
+  }
+  const firstItemCf = items[0]?.custom_fields || {};
+  if (firstItemCf.casing_moc || firstItemCf.impeller_moc || firstItemCf.shaft_moc || firstItemCf.sealing_arrangement) {
+    const pType = firstItemCf.pump_type || 'Pump';
+    const cMoc = firstItemCf.casing_moc || 'CI';
+    const iMoc = firstItemCf.impeller_moc || 'CI';
+    const sMoc = firstItemCf.shaft_moc || '40C8';
+    const seal = firstItemCf.sealing_arrangement === 'Mechanical Seal'
+      ? `Mechanical Seal (${firstItemCf.seal_material || 'SiC/SiC'})`
+      : (firstItemCf.sealing_arrangement || 'Gland Packed');
+    return `${pType} – ${cMoc} Casing / ${iMoc} Impeller / Shaft – ${sMoc} With ${seal}`;
+  }
+  return defaultFallback;
+}
+
 export function wadiSplitCaseTemplate(data) {
   const items = data.items && data.items.length > 0 ? data.items : [];
   let totalAmount = 0;
@@ -250,9 +269,10 @@ export function wadiSplitCaseTemplate(data) {
   const itemRows = items.map((item, idx) => {
     const cf = item.custom_fields || {};
     const sno = idx + 1;
-    const head = item.head || cf.head || data.head || '';
-    const flow = item.flow_rate || cf.flow || cf.flow_rate || data.flow || '';
-    const model = item.model || cf.pump_model || cf.model || item.product_name || item.description || '';
+    const head = item.head || (cf.head_m ? `${cf.head_m} m` : '') || cf.head || data.head || '';
+    const flow = cf.flow_lps ? `${cf.flow_lps} LPS` : (cf.flow_m3_hr ? `${cf.flow_m3_hr} m³/hr` : (item.flow || item.flow_rate || cf.flow || cf.flow_rate || data.flow || ''));
+    const model = item.model || cf.pump_model || cf.model || item.product_name || '';
+    const desc = item.description || '';
     const qty = item.qty || '01';
     const rate = Number(item.rate || item.discounted_price || 0);
     const lineTotal = item.line_total ? Number(item.line_total) : (rate * (Number(qty) || 1));
@@ -263,7 +283,10 @@ export function wadiSplitCaseTemplate(data) {
         <td class="center" style="font-weight: bold;">${sno}</td>
         <td class="center">${head}</td>
         <td class="center">${flow}</td>
-        <td class="desc">${model}</td>
+        <td class="desc">
+          <div style="font-weight: bold;">${model || desc}</div>
+          ${desc && desc !== model ? `<div style="font-size: 8.5pt; color: #475569; margin-top: 2px;">${desc}</div>` : ''}
+        </td>
         <td class="center font-bold">${qty}</td>
         <td class="right">${rate ? formatIndianNumber(rate) + '/-' : ''}</td>
         <td class="right font-bold">${lineTotal ? formatIndianNumber(lineTotal) + '/-' : ''}</td>
@@ -272,7 +295,7 @@ export function wadiSplitCaseTemplate(data) {
   }).join('');
 
   const displayTotal = totalAmount > 0 ? totalAmount : (Number(data.total_amount) || 0);
-  const moc = data.material_construction || 'UP Pump (01 MOC) – CI–Casing / CI-Impeller / Shaft – 40C8 With Gland Packed';
+  const moc = getWadiDynamicMoc(data, items, 'UP Pump (01 MOC) – CI–Casing / CI-Impeller / Shaft – 40C8 With Gland Packed');
   const personName = data.sales_person_name || 'G S Sayan';
   const personPhone = data.sales_person_phone || '9893276018';
 
@@ -403,9 +426,10 @@ export function wadiFireFightingTemplate(data) {
   const itemRows = items.map((item) => {
     const cf = item.custom_fields || {};
     const app = item.application || cf.application || '';
-    const head = item.head || cf.head || data.head || '';
-    const flow = item.flow_rate || cf.flow || cf.flow_rate || data.flow || '';
-    const model = item.model || cf.pump_model || cf.model || item.product_name || item.description || '';
+    const head = item.head || (cf.head_m ? `${cf.head_m} m` : '') || cf.head || data.head || '';
+    const flow = cf.flow_m3_hr ? `${cf.flow_m3_hr} m³/hr` : (cf.flow_lps ? `${cf.flow_lps} LPS` : (item.flow || item.flow_rate || cf.flow || cf.flow_rate || data.flow || ''));
+    const model = item.model || cf.pump_model || cf.model || item.product_name || '';
+    const desc = item.description || '';
     const qty = item.qty || '01';
     const rate = Number(item.rate || item.discounted_price || 0);
     const lineTotal = item.line_total ? Number(item.line_total) : (rate * (Number(qty) || 1));
@@ -575,9 +599,10 @@ export function wadiEndSuctionTemplate(data) {
   const itemRows = items.map((item, idx) => {
     const cf = item.custom_fields || {};
     const sno = idx + 1;
-    const head = item.head || cf.head || data.head || '';
-    const flow = item.flow_rate || cf.flow || cf.flow_rate || data.flow || '';
-    const model = item.model || cf.pump_model || cf.model || item.product_name || item.description || '';
+    const head = item.head || (cf.head_m ? `${cf.head_m} m` : '') || cf.head || data.head || '';
+    const flow = cf.flow_m3_hr ? `${cf.flow_m3_hr} m³/hr` : (cf.flow_lps ? `${cf.flow_lps} LPS` : (item.flow || item.flow_rate || cf.flow || cf.flow_rate || data.flow || ''));
+    const model = item.model || cf.pump_model || cf.model || item.product_name || '';
+    const desc = item.description || '';
     const qty = item.qty || '01';
     const rate = Number(item.rate || item.discounted_price || 0);
     const lineTotal = item.line_total ? Number(item.line_total) : (rate * (Number(qty) || 1));
@@ -720,9 +745,10 @@ export function wadiFireFightingMocTemplate(data) {
   const itemRows = items.map((item) => {
     const cf = item.custom_fields || {};
     const app = item.application || cf.application || '';
-    const head = item.head || cf.head || data.head || '';
-    const flow = item.flow_rate || cf.flow || cf.flow_rate || data.flow || '';
-    const model = item.model || cf.pump_model || cf.model || item.product_name || item.description || '';
+    const head = item.head || (cf.head_m ? `${cf.head_m} m` : '') || cf.head || data.head || '';
+    const flow = cf.flow_m3_hr ? `${cf.flow_m3_hr} m³/hr` : (cf.flow_lps ? `${cf.flow_lps} LPS` : (item.flow || item.flow_rate || cf.flow || cf.flow_rate || data.flow || ''));
+    const model = item.model || cf.pump_model || cf.model || item.product_name || '';
+    const desc = item.description || '';
     const qty = item.qty || '01';
     const rate = Number(item.rate || item.discounted_price || 0);
     const lineTotal = item.line_total ? Number(item.line_total) : (rate * (Number(qty) || 1));

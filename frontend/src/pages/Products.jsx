@@ -7,6 +7,7 @@ import { useAuth } from '../lib/AuthContext';
 import { canAccess } from '../lib/permissions';
 import { extractTextFromPdf } from '../lib/pdfTextExtractor';
 import mammoth from 'mammoth/mammoth.browser';
+import { WADI_CATALOG_PRODUCTS } from '../lib/wadiCatalogData';
 import {
   KIRLOSKAR_INLINE_PUMPS,
   KIRLOSKAR_MONOBLOC_PUMPS,
@@ -53,6 +54,7 @@ export default function Products() {
   const canDelete = canAccess(user, 'products', 'delete');
   const [groupFilter, setGroupFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
 
@@ -64,6 +66,31 @@ export default function Products() {
   const [selectedIndices, setSelectedIndices] = useState(new Set());
   const [importing, setImporting] = useState(false);
   const [syncingDigiset, setSyncingDigiset] = useState(false);
+  const [syncingWadi, setSyncingWadi] = useState(false);
+
+  const handleSyncWadi = async () => {
+    try {
+      setSyncingWadi(true);
+      setActionError('');
+      let res;
+      try {
+        res = await api('/products/sync-wadi', { method: 'POST' });
+      } catch (postErr) {
+        // Fallback to bulk-create which always exists on any backend server version
+        res = await api('/products/bulk-create', {
+          method: 'POST',
+          body: JSON.stringify({ products: WADI_CATALOG_PRODUCTS }),
+        });
+      }
+      setActionSuccess(res?.message || 'WADI catalog synced successfully!');
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product-categories'] });
+    } catch (err) {
+      setActionError(err.message || 'Failed to sync WADI catalog.');
+    } finally {
+      setSyncingWadi(false);
+    }
+  };
 
   const handleSyncDigiset = async () => {
     try {
@@ -573,11 +600,15 @@ export default function Products() {
   );
 
   const filteredProducts = useMemo(() => {
-    if (!searchTerm.trim()) return products;
+    let list = products;
+    if (categoryFilter && categoryFilter !== 'ALL') {
+      list = list.filter((p) => String(p.category || '').toUpperCase() === categoryFilter.toUpperCase());
+    }
+    if (!searchTerm.trim()) return list;
     const q = searchTerm.toLowerCase().trim();
     const qClean = q.replace(/[\s\-_]/g, '');
 
-    return products.filter((p) => {
+    return list.filter((p) => {
       const name = (p.product_name || '').toLowerCase();
       const code = (p.code || '').toLowerCase();
       const hp = (p.hp || '').toLowerCase();
@@ -598,7 +629,7 @@ export default function Products() {
       }
       return false;
     });
-  }, [products, searchTerm]);
+  }, [products, searchTerm, categoryFilter]);
 
   const rows = filteredProducts.map((p) => ({
     ...p,
@@ -783,6 +814,15 @@ export default function Products() {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={handleSyncWadi}
+            disabled={syncingWadi}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3.5 py-2 text-xs font-semibold text-indigo-800 shadow-sm hover:bg-indigo-100 transition disabled:opacity-50"
+            title="Sync all 115 official WADI models into database"
+          >
+            <span>⚡ {syncingWadi ? 'Syncing...' : 'Sync WADI Catalog (115)'}</span>
+          </button>
+          <button
+            type="button"
             onClick={handleSyncDigiset}
             disabled={syncingDigiset}
             className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-3.5 py-2 text-xs font-semibold text-purple-800 shadow-sm hover:bg-purple-100 transition disabled:opacity-50"
@@ -858,15 +898,48 @@ export default function Products() {
 
         {/* Category Breakdown */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs sm:col-span-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Categories Breakdown</span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Categories Breakdown</span>
+            {categoryFilter !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('ALL')}
+                className="text-[11px] font-bold text-brand-600 hover:text-brand-800"
+              >
+                ✕ Clear Filter (Show All)
+              </button>
+            )}
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('ALL')}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                categoryFilter === 'ALL'
+                  ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-xs ring-1 ring-brand-400 font-bold'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <span>All:</span>
+              <span className="font-extrabold text-brand-700">{products.length}</span>
+            </button>
             {Object.entries(categoryStats).length > 0 ? (
               Object.entries(categoryStats).map(([cat, count]) => (
-                <span key={cat} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat === categoryFilter ? 'ALL' : cat)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                    categoryFilter === cat
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-xs ring-1 ring-indigo-400 font-bold'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                  }`}
+                  title={`Click to filter by ${cat}`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${cat === 'WADI' ? 'bg-amber-500' : cat === 'DIGISET' ? 'bg-purple-500' : 'bg-indigo-500'}`}></span>
                   <span>{cat}:</span>
                   <span className="font-extrabold text-indigo-700">{count}</span>
-                </span>
+                </button>
               ))
             ) : (
               <span className="text-xs text-slate-400">No products categorized yet</span>
@@ -938,6 +1011,17 @@ export default function Products() {
               </button>
             )}
           </div>
+
+          <select
+            className="rounded-lg border border-slate-300 bg-white p-2 text-xs font-bold text-slate-700 shadow-xs"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="ALL">All Categories ({products.length})</option>
+            <option value="WADI">WADI ({categoryStats['WADI'] || 0})</option>
+            <option value="DEWAS">DEWAS ({categoryStats['DEWAS'] || 0})</option>
+            <option value="DIGISET">DIGISET ({categoryStats['DIGISET'] || 0})</option>
+          </select>
 
           <select
             className="rounded-lg border border-slate-300 bg-white p-2 text-xs font-medium text-slate-700 shadow-xs"

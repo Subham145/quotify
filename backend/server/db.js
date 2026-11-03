@@ -8,7 +8,8 @@ import { getDefaultPermissions } from './permissions.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database('quotify.db');
+const DB_FILE_PATH = process.env.DB_PATH || path.resolve(__dirname, '../quotify.db');
+const db = new Database(DB_FILE_PATH);
 db.pragma('journal_mode = WAL');
 
 export function initDb() {
@@ -530,6 +531,33 @@ export function initDb() {
           seedDigiTx();
           console.log(`[Seed] Successfully auto-seeded ${digisetRows.length} DIGISET products on live!`);
         }
+
+      // Auto-seed missing WADI catalog products on live servers
+      const wadiCount = db.prepare("SELECT count(*) as count FROM products WHERE category = 'WADI'").get();
+      if (!wadiCount || wadiCount.count === 0) {
+        console.log('[Seed] No WADI products found in DB. Auto-seeding WADI products from seedData.json...');
+        const raw = fs.readFileSync(seedFilePath, 'utf-8');
+        const data = JSON.parse(raw);
+        const wadiRows = (data.products || []).filter((p) => p.category === 'WADI');
+        if (wadiRows.length > 0) {
+          try {
+            db.prepare("INSERT OR IGNORE INTO product_categories (name, is_active) VALUES ('WADI', 1)").run();
+          } catch (_) {}
+
+          const seedWadiTx = db.transaction(() => {
+            for (const row of wadiRows) {
+              const keys = Object.keys(row);
+              const placeholders = keys.map(() => '?').join(', ');
+              const columns = keys.map((k) => `"${k}"`).join(', ');
+              const values = keys.map((k) => row[k]);
+              db.prepare(`INSERT OR REPLACE INTO products (${columns}) VALUES (${placeholders})`).run(...values);
+            }
+          });
+          seedWadiTx();
+          console.log(`[Seed] Successfully auto-seeded ${wadiRows.length} WADI products on live!`);
+        }
+      }
+
       }
     }
   } catch (err) {

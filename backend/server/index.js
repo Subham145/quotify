@@ -734,23 +734,65 @@ app.delete('/api/product-groups/:id', requireAuth, (req, res) => {
 
 app.get('/api/products', requireAuth, (req, res) => {
   const groupId = req.query.group_id ? Number(req.query.group_id) : null;
-  const rows = groupId
-    ? db
-        .prepare(
-          `SELECT p.*, g.group_name
-           FROM products p LEFT JOIN product_groups g ON g.id = p.group_id
-           WHERE p.group_id = ?
-           ORDER BY p.id DESC`
-        )
-        .all(groupId)
-    : db
-        .prepare(
-          `SELECT p.*, g.group_name
-           FROM products p LEFT JOIN product_groups g ON g.id = p.group_id
-           ORDER BY p.id DESC`
-        )
-        .all();
+  const category = req.query.category ? String(req.query.category).trim() : null;
+
+  let query = `SELECT p.*, g.group_name
+               FROM products p LEFT JOIN product_groups g ON g.id = p.group_id`;
+  const conditions = [];
+  const params = [];
+
+  if (groupId) {
+    conditions.push('p.group_id = ?');
+    params.push(groupId);
+  }
+  if (category && category !== 'ALL') {
+    conditions.push('UPPER(p.category) = UPPER(?)');
+    params.push(category);
+  }
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+  query += ' ORDER BY p.id DESC';
+
+  const rows = db.prepare(query).all(...params);
   res.json(rows);
+});
+
+
+app.post('/api/products/sync-wadi', requireAuth, (_req, res) => {
+  try {
+    const seedFilePath = path.resolve(__dirname, '../seedData.json');
+    if (!fs.existsSync(seedFilePath)) {
+      return res.status(404).json({ message: 'seedData.json not found on server' });
+    }
+    const raw = fs.readFileSync(seedFilePath, 'utf-8');
+    const data = JSON.parse(raw);
+    const wadiRows = (data.products || []).filter((p) => p.category === 'WADI');
+    if (!wadiRows.length) {
+      return res.status(404).json({ message: 'No WADI products found in seedData.json' });
+    }
+
+    try {
+      db.prepare("INSERT OR IGNORE INTO product_categories (name, is_active) VALUES ('WADI', 1)").run();
+    } catch (_) {}
+
+    const seedTx = db.transaction(() => {
+      for (const row of wadiRows) {
+        const keys = Object.keys(row);
+        const placeholders = keys.map(() => '?').join(', ');
+        const columns = keys.map((k) => `"${k}"`).join(', ');
+        const values = keys.map((k) => row[k]);
+        db.prepare(`INSERT OR REPLACE INTO products (${columns}) VALUES (${placeholders})`).run(...values);
+      }
+    });
+    seedTx();
+
+    const count = db.prepare("SELECT count(*) as count FROM products WHERE category = 'WADI'").get()?.count || 0;
+    res.json({ ok: true, message: `Successfully synced ${wadiRows.length} WADI products to database.`, count });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to sync WADI products: ' + err.message });
+  }
 });
 
 app.post('/api/products/sync-digiset', requireAuth, (_req, res) => {

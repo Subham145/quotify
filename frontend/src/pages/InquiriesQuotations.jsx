@@ -7,6 +7,8 @@ import StatusBadge from '../components/shared/StatusBadge';
 import { useAuth } from '../lib/AuthContext';
 import { canAccess, isManager } from '../lib/permissions';
 import WadiTemplateSelector from '../components/quotations/WadiTemplateSelector';
+import WadiLineItemSpecs, { generateWadiDescription } from '../components/quotations/WadiLineItemSpecs';
+import { WADI_CATALOG_PRODUCTS } from '../lib/wadiCatalogData';
 
 function ProductSearchInput({ products = [], onSelect, currentModel = '', category = '' }) {
   const [query, setQuery] = useState('');
@@ -17,11 +19,20 @@ function ProductSearchInput({ products = [], onSelect, currentModel = '', catego
     setIsOpen(false);
   }, [category]);
 
+  const catUpper = String(category || '').trim().toUpperCase();
+  const catProducts = useMemo(() => {
+    return catUpper
+      ? products.filter((p) => String(p.category || '').trim().toUpperCase() === catUpper)
+      : products;
+  }, [products, catUpper]);
+
   const filtered = useMemo(() => {
-    if (!query.trim()) return [];
+    if (!query.trim()) {
+      return catProducts.slice(0, 15);
+    }
     const q = query.toLowerCase().trim();
     const qClean = q.replace(/[\s\-_]/g, '');
-    return products.filter((p) => String(p.category || '').trim().toUpperCase() === String(category || '').trim().toUpperCase()).filter((p) => {
+    return catProducts.filter((p) => {
       const name = (p.product_name || '').toLowerCase();
       const code = (p.code || '').toLowerCase();
       const hp = (p.hp || '').toLowerCase();
@@ -35,8 +46,8 @@ function ProductSearchInput({ products = [], onSelect, currentModel = '', catego
       if (nameClean.includes(qClean) || codeClean.includes(qClean)) return true;
       if (qClean === 'kosm' && (name.includes('kos') && (name.includes('m') || code.includes('m')))) return true;
       return false;
-    }).slice(0, 15);
-  }, [products, query]);
+    }).slice(0, 20);
+  }, [catProducts, query]);
 
   return (
     <div className="relative w-full">
@@ -44,7 +55,7 @@ function ProductSearchInput({ products = [], onSelect, currentModel = '', catego
         <input
           type="text"
           className="w-full rounded-lg border border-brand-300 bg-brand-50/40 px-3 py-1.5 pl-8 text-xs font-semibold text-brand-900 placeholder:text-brand-400 focus:border-brand-500 focus:bg-white focus:outline-none"
-          placeholder={currentModel ? `Selected: ${currentModel} (Type to search & replace)` : "🔍 Search product by model, name, code or HP..."}
+          placeholder={currentModel ? `Selected: ${currentModel} (Click to see models or type to search)` : `🔍 Search ${category ? category + ' ' : ''}product by model, name, code (e.g. DBxe, UP, SCT)...`}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -70,45 +81,60 @@ function ProductSearchInput({ products = [], onSelect, currentModel = '', catego
         )}
       </div>
 
-      {isOpen && filtered.length > 0 && (
-        <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
-          <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b">
-            Matching Products ({filtered.length})
-          </div>
-          {filtered.map((prod) => (
-            <button
-              key={prod.id}
-              type="button"
-              className="w-full text-left rounded-md px-2.5 py-1.5 hover:bg-brand-50 flex items-center justify-between transition-colors border-b last:border-0 border-slate-100"
-              onMouseDown={() => {
-                onSelect(prod);
-                setQuery('');
-                setIsOpen(false);
-              }}
-            >
-              <div>
-                <div className="text-xs font-bold text-slate-800">
-                  {prod.code || prod.product_name}
-                  {prod.product_name && prod.code && prod.product_name !== prod.code && (
-                    <span className="ml-1 text-[11px] font-normal text-slate-500">({prod.product_name})</span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500 mt-0.5">
-                  {prod.hp && <span><b>HP:</b> {prod.hp}</span>}
-                  {prod.head && <span><b>Head:</b> {prod.head}m</span>}
-                  {prod.flow_rate && <span><b>Flow:</b> {prod.flow_rate}</span>}
-                  {prod.pipe_size && <span><b>Size:</b> {prod.pipe_size}</span>}
-                  {prod.category && <span className="text-brand-600 font-semibold">{prod.category}</span>}
-                </div>
+      {isOpen && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+          {catProducts.length === 0 ? (
+            <div className="p-3 text-center text-xs text-slate-500">
+              <p className="font-semibold text-amber-700">No {category || 'product'} catalog items loaded in database.</p>
+              <p className="text-[11px] mt-0.5 text-slate-400">Please sync the catalog from the top button.</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-3 text-center text-xs text-slate-500">
+              No products found matching "<span className="font-semibold">{query}</span>" in {category}.
+            </div>
+          ) : (
+            <>
+              <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b flex justify-between items-center">
+                <span>{query ? `Matching Products (${filtered.length})` : `Popular ${category} Models (${catProducts.length} total)`}</span>
+                <span className="text-[10px] text-brand-600 font-semibold">Click to select & auto-fill</span>
               </div>
-              <div className="text-right pl-2 shrink-0">
-                <div className="text-xs font-extrabold text-emerald-700">
-                  ₹{Number(prod.price || 0).toLocaleString('en-IN')}
-                </div>
-                <div className="text-[10px] text-slate-400">Click to autofill</div>
-              </div>
-            </button>
-          ))}
+              {filtered.map((prod) => (
+                <button
+                  key={prod.id}
+                  type="button"
+                  className="w-full text-left rounded-md px-2.5 py-1.5 hover:bg-brand-50 flex items-center justify-between transition-colors border-b last:border-0 border-slate-100"
+                  onMouseDown={() => {
+                    onSelect(prod);
+                    setQuery('');
+                    setIsOpen(false);
+                  }}
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">
+                      {prod.code || prod.product_name}
+                      {prod.product_name && prod.code && prod.product_name !== prod.code && (
+                        <span className="ml-1 text-[11px] font-normal text-slate-500">({prod.product_name})</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500 mt-0.5">
+                      {prod.hp && <span><b>HP:</b> {prod.hp}</span>}
+                      {prod.kw && <span><b>kW:</b> {prod.kw}</span>}
+                      {prod.head && <span><b>Head:</b> {prod.head}</span>}
+                      {prod.flow_rate && <span><b>Flow:</b> {prod.flow_rate}</span>}
+                      {prod.pipe_size && <span><b>Size:</b> {prod.pipe_size}</span>}
+                      {prod.category && <span className="text-brand-600 font-semibold">{prod.category}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right pl-2 shrink-0">
+                    <div className="text-xs font-extrabold text-emerald-700">
+                      ₹{Number(prod.price || 0).toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[10px] text-slate-400">Click to autofill</div>
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -507,6 +533,31 @@ export default function InquiriesQuotations() {
 
   const [parsingPdf, setParsingPdf] = useState(false);
   const [syncingDigiset, setSyncingDigiset] = useState(false);
+  const [syncingWadi, setSyncingWadi] = useState(false);
+
+  const handleSyncWadi = async () => {
+    try {
+      setSyncingWadi(true);
+      setActionError('');
+      let res;
+      try {
+        res = await api('/products/sync-wadi', { method: 'POST' });
+      } catch (postErr) {
+        // Fallback to bulk-create which always exists on any backend server version
+        res = await api('/products/bulk-create', {
+          method: 'POST',
+          body: JSON.stringify({ products: WADI_CATALOG_PRODUCTS }),
+        });
+      }
+      setActionMessage(res?.message || 'WADI catalog synced successfully!');
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product-categories'] });
+    } catch (err) {
+      setActionError(err.message || 'Failed to sync WADI catalog.');
+    } finally {
+      setSyncingWadi(false);
+    }
+  };
 
   const handleSyncDigiset = async () => {
     try {
@@ -637,6 +688,39 @@ export default function InquiriesQuotations() {
       const items = [...prev.items];
       const custom_fields = { ...(items[itemIndex].custom_fields || {}), [key]: value };
       items[itemIndex] = { ...items[itemIndex], custom_fields };
+      return { ...prev, items };
+    });
+  };
+
+  const batchUpdateQuotationItem = (itemIndex, topLevelUpdates, customFields) => {
+    setQuotationForm((prev) => {
+      const items = [...prev.items];
+      items[itemIndex] = {
+        ...items[itemIndex],
+        ...topLevelUpdates,
+        custom_fields: customFields
+      };
+      return { ...prev, items };
+    });
+  };
+
+  const updateEditQuotationItemCustomField = (itemIndex, key, value) => {
+    setEditingQuotation((prev) => {
+      const items = [...(prev.items || [])];
+      const custom_fields = { ...(items[itemIndex]?.custom_fields || {}), [key]: value };
+      items[itemIndex] = { ...items[itemIndex], custom_fields };
+      return { ...prev, items };
+    });
+  };
+
+  const batchUpdateEditQuotationItem = (itemIndex, topLevelUpdates, customFields) => {
+    setEditingQuotation((prev) => {
+      const items = [...(prev.items || [])];
+      items[itemIndex] = {
+        ...items[itemIndex],
+        ...topLevelUpdates,
+        custom_fields: customFields
+      };
       return { ...prev, items };
     });
   };
@@ -915,8 +999,60 @@ export default function InquiriesQuotations() {
     const sizeVal = prod.pipe_size || '';
     const solidVal = prod.solid_size || '';
     const rateVal = Number(prod.price || 0);
-    const descVal = prod.product_name || prod.code || '';
     const gstVal = Number(prod.gst_rate || 18);
+
+    // Parse WADI specific parameters if available
+    let customFields = {};
+    let descVal = prod.product_name || prod.code || '';
+    const isWadi = (prod.category || '').toUpperCase().includes('WADI') ||
+      (isEdit ? (editingQuotation?.category || '').toUpperCase().includes('WADI') : (quotationForm.category || '').toUpperCase().includes('WADI'));
+
+    if (isWadi) {
+      let parsedSpecs = {};
+      try {
+        if (typeof prod.specs === 'string') parsedSpecs = JSON.parse(prod.specs);
+        else if (typeof prod.specs === 'object' && prod.specs) parsedSpecs = prod.specs;
+      } catch (_) {}
+
+      const cleanHead = headVal ? String(headVal).replace(/[^0-9.]/g, '') : '';
+      const cleanFlowM3 = flowVal ? String(flowVal).split(/[\s(]/)[0].replace(/[^0-9.]/g, '') : '';
+      const cleanFlowLps = cleanFlowM3 ? (Number(cleanFlowM3) / 3.6).toFixed(2) : '';
+      const sizeParts = sizeVal ? sizeVal.split('x').map(s => s.replace(/[^0-9]/g, '').trim()) : [];
+      const sucSize = parsedSpecs.suction_size || sizeParts[0] || '250';
+      const delSize = parsedSpecs.delivery_size || sizeParts[1] || '200';
+      const pType = parsedSpecs.pump_type || (modelVal.startsWith('DB') ? 'End Suction' : (modelVal.startsWith('UP') || modelVal.startsWith('SCT') || modelVal.startsWith('DSM') ? 'Horizontal Split Casing' : 'End Suction'));
+
+      customFields = {
+        pump_type: pType,
+        pump_model: modelVal,
+        head_m: cleanHead,
+        flow_m3_hr: cleanFlowM3,
+        flow_lps: cleanFlowLps,
+        suction_size: sucSize,
+        delivery_size: delSize,
+        pump_orientation: 'Horizontal',
+        casing_moc: parsedSpecs.casing_moc || 'CI',
+        impeller_moc: parsedSpecs.impeller_moc || 'CI',
+        shaft_moc: parsedSpecs.shaft_moc || '40C8',
+        wetted_parts: 'As Per Standard',
+        construction: pType.includes('Split') ? 'Split Casing' : 'End Suction',
+        installation_type: 'Horizontal',
+        motor_make: '',
+        motor_kw: prod.kw ? String(prod.kw).replace(/[^0-9.]/g, '') : '',
+        motor_hp: prod.hp ? String(prod.hp).replace(/[^0-9.]/g, '') : '',
+        motor_rpm: '1450',
+        motor_efficiency: '92.0',
+        motor_phase: '3 Phase',
+        motor_voltage: '415',
+        motor_frequency: '50',
+        sealing_arrangement: parsedSpecs.sealing_arrangement || 'Mechanical Seal',
+        seal_type: parsedSpecs.seal_type || 'Single',
+        seal_material: parsedSpecs.seal_material || 'SiC / SiC',
+        seal_make: parsedSpecs.seal_make || 'As Per Standard'
+      };
+
+      descVal = generateWadiDescription(customFields, modelVal);
+    }
 
     if (isEdit) {
       setEditingQuotation((prev) => {
@@ -2014,6 +2150,23 @@ value={p.product_name}
               </div>
             </div>
 
+            {quotationForm.category === 'WADI' && productsForCategory('WADI').length === 0 && (
+              <div className="rounded-lg border border-indigo-300 bg-indigo-50 p-2.5 text-xs text-indigo-900 flex items-center justify-between gap-2 shadow-xs">
+                <div>
+                  <span className="font-bold flex items-center gap-1">⚠️ WADI catalog products live database me load nahi hain.</span>
+                  <p className="text-[11px] text-indigo-700">115 standard WADI models (DBxe, UP Split Case, Process, Fire Fighting, Valves) load karne ke liye yahan click karein:</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSyncWadi}
+                  disabled={syncingWadi}
+                  className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {syncingWadi ? 'Syncing...' : '⚡ Sync WADI Models (115)'}
+                </button>
+              </div>
+            )}
+
             {quotationForm.category === 'DIGISET' && productsForCategory('DIGISET').length === 0 && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-center justify-between gap-2 shadow-xs">
                 <div>
@@ -2032,8 +2185,17 @@ value={p.product_name}
             )}
 
             {/* Category-Specific Compact Specs Grid */}
-            <div className="grid gap-1.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-6 bg-slate-50 p-2 rounded-lg border border-slate-200/80">
-              {quotationForm.category === 'DEWAS' && (
+            {quotationForm.category === 'WADI' ? (
+              <WadiLineItemSpecs
+                item={item}
+                idx={idx}
+                onUpdateField={(index, f, v) => updateItem(index, f, v)}
+                onUpdateCustomField={(index, k, v) => updateItemCustomField(index, k, v)}
+                onBatchUpdate={(index, topUpdates, cfUpdates) => batchUpdateQuotationItem(index, topUpdates, cfUpdates)}
+              />
+            ) : (
+              <div className="grid gap-1.5 grid-cols-2 sm:grid-cols-3 md:grid-cols-6 bg-slate-50 p-2 rounded-lg border border-slate-200/80">
+                {quotationForm.category === 'DEWAS' && (
                 <>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase">Model</label>
@@ -2092,52 +2254,7 @@ value={p.product_name}
                 </>
               )}
 
-              {quotationForm.category === 'WADI' && (
-                <>
-                  {(quotationForm.template_type === 'wadi_fire_fighting' || quotationForm.template_type === 'wadi_fire_fighting_moc') && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase">Application</label>
-                      <input
-                        className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-brand-500"
-                        placeholder="e.g. Main Pump"
-                        value={item.application || ''}
-                        onChange={(e) => updateItem(idx, 'application', e.target.value)}
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Pump Model</label>
-                    <input
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
-                      placeholder="e.g. UP 250/38"
-                      value={item.model || ''}
-                      onChange={(e) => updateItem(idx, 'model', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Head (m)</label>
-                    <input
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
-                      placeholder="e.g. 45 m"
-                      value={item.head || ''}
-                      onChange={(e) => updateItem(idx, 'head', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                      Flow ({quotationForm.template_type === 'wadi_split_case' ? 'LPS' : (quotationForm.template_type === 'wadi_end_suction' ? 'm3/h' : 'm3/hr')})
-                    </label>
-                    <input
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand-500"
-                      placeholder="e.g. 160 LPS"
-                      value={item.flow || ''}
-                      onChange={(e) => updateItem(idx, 'flow', e.target.value)}
-                    />
-                  </div>
-                </>
-              )}
-
-              {quotationForm.category === 'DIGISET' && (
+                {quotationForm.category === 'DIGISET' && (
                 <>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase">Engine Model</label>
@@ -2227,7 +2344,8 @@ value={p.product_name}
                   </div>
                 </>
               )}
-            </div>
+              </div>
+            )}
 
             {/* Commercial Pricing Grid */}
             <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-12 bg-slate-50 p-2 rounded-lg border border-slate-200/80 items-end">
@@ -2923,8 +3041,17 @@ Cancel
                 </div>
 
                 {/* Category Specific Duty Parameters */}
-                <div className="grid gap-2 md:grid-cols-5">
-                  {editingQuotation.category === 'DEWAS' && (
+                {editingQuotation.category === 'WADI' ? (
+                  <WadiLineItemSpecs
+                    item={item}
+                    idx={idx}
+                    onUpdateField={(index, f, v) => updateEditQuotationItem(index, f, v)}
+                    onUpdateCustomField={(index, k, v) => updateEditQuotationItemCustomField(index, k, v)}
+                    onBatchUpdate={(index, topUpdates, cfUpdates) => batchUpdateEditQuotationItem(index, topUpdates, cfUpdates)}
+                  />
+                ) : (
+                  <div className="grid gap-2 md:grid-cols-5">
+                    {editingQuotation.category === 'DEWAS' && (
                     <>
                       <div>
                         <label className="text-xs font-medium text-slate-600">Pump Model</label>
@@ -2974,52 +3101,7 @@ Cancel
                     </>
                   )}
 
-                  {editingQuotation.category === 'WADI' && (
-                    <>
-                      {(editingQuotation.template_type === 'wadi_fire_fighting' || editingQuotation.template_type === 'wadi_fire_fighting_moc') && (
-                        <div>
-                          <label className="text-xs font-medium text-slate-600">Application</label>
-                          <input
-                            className="w-full rounded border p-2 text-xs font-semibold text-slate-800"
-                            placeholder="e.g. Main Pump / Diesel Engine Pump / Jockey Pump"
-                            value={item.application || ''}
-                            onChange={(e) => updateEditQuotationItem(idx, 'application', e.target.value)}
-                          />
-                        </div>
-                      )}
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">Pump Model &amp; Description</label>
-                        <input
-                          className="w-full rounded border p-2 text-xs"
-                          placeholder="e.g. UP 250/38 or DB 80/20xe"
-                          value={item.model || ''}
-                          onChange={(e) => updateEditQuotationItem(idx, 'model', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">Pump Head (m)</label>
-                        <input
-                          className="w-full rounded border p-2 text-xs"
-                          placeholder="e.g. 45 m / 100 m"
-                          value={item.head || ''}
-                          onChange={(e) => updateEditQuotationItem(idx, 'head', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">
-                          Flow ({editingQuotation.template_type === 'wadi_split_case' ? 'LPS' : (editingQuotation.template_type === 'wadi_end_suction' ? 'm3/h' : 'm3/hr')})
-                        </label>
-                        <input
-                          className="w-full rounded border p-2 text-xs"
-                          placeholder={editingQuotation.template_type === 'wadi_split_case' ? 'e.g. 160 LPS' : (editingQuotation.template_type === 'wadi_end_suction' ? 'e.g. 130 m3/h' : 'e.g. 273 m3/hr')}
-                          value={item.flow || ''}
-                          onChange={(e) => updateEditQuotationItem(idx, 'flow', e.target.value)}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {editingQuotation.category === 'DIGISET' && (
+                    {editingQuotation.category === 'DIGISET' && (
                     <>
                       <div>
                         <label className="text-xs font-medium text-slate-600">Engine/Set Model</label>
@@ -3068,7 +3150,8 @@ Cancel
                       </div>
                     </>
                   )}
-                </div>
+                  </div>
+                )}
 
                 {/* Commercial Details: Description, Quantity, Rate, Each Discounted Price, GST */}
                 <div className="grid gap-2 md:grid-cols-6 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
