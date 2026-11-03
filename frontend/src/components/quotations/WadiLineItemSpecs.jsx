@@ -1,5 +1,4 @@
 import React from 'react';
-import { Layers, Zap, Disc, Info, Droplets, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export const PUMP_TYPES = [
   'Horizontal Split Casing',
@@ -12,7 +11,16 @@ export const PUMP_TYPES = [
   'Fire Fighting Pump Set',
   'Solid Handling Pump',
   'Sump Pump',
+  'As Per Standard',
   'Other'
+];
+
+export const PUMP_ORIENTATION_OPTIONS = [
+  'Horizontal',
+  'Vertical',
+  'NAN',
+  'Submerged',
+  'As Per Standard'
 ];
 
 export const MOC_CASING_OPTIONS = [
@@ -22,7 +30,8 @@ export const MOC_CASING_OPTIONS = [
   'CF8M / SS316',
   'Bronze',
   'WCB',
-  'Cast Steel'
+  'Cast Steel',
+  'As Per Standard'
 ];
 
 export const MOC_IMPELLER_OPTIONS = [
@@ -31,7 +40,8 @@ export const MOC_IMPELLER_OPTIONS = [
   'CF8',
   'CF8M / SS316',
   'SGI',
-  'Gunmetal'
+  'Gunmetal',
+  'As Per Standard'
 ];
 
 export const MOC_SHAFT_OPTIONS = [
@@ -40,31 +50,77 @@ export const MOC_SHAFT_OPTIONS = [
   'SS410',
   'SS304',
   'SS316',
-  'EN8'
+  'EN8',
+  'As Per Standard'
 ];
 
-export const SEAL_TYPES = ['Single', 'Double', 'Cartridge', 'Component'];
-export const SEAL_MATERIALS = ['SiC / SiC', 'Carbon / SiC', 'TC / TC', 'Carbon / Ceramic', 'SiC / TC'];
-export const SEAL_MAKES = ['As Per Standard', 'Burgmann', 'Eagle', 'Flex-A-Seal', 'Other'];
+export const CONSTRUCTION_OPTIONS = [
+  'Split Casing',
+  'End Suction',
+  'Monobloc',
+  'Multistage',
+  'As Per Standard'
+];
+
+export const MOTOR_EFFICIENCY_OPTIONS = [
+  'IE2',
+  'IE3',
+  'IE4',
+  'IE1',
+  'As Per Standard'
+];
+
+export const SEAL_TYPES = [
+  'Single',
+  'Double',
+  'Cartridge',
+  'Component',
+  'As Per Standard'
+];
+
+export const SEAL_MATERIALS = [
+  'SiC / SiC',
+  'Carbon / SiC',
+  'TC / TC',
+  'Carbon / Ceramic',
+  'SiC / TC',
+  'As Per Standard'
+];
+
+export const SEAL_MAKES = [
+  'As Per Standard',
+  'Burgmann',
+  'Eagle',
+  'Flex-A-Seal',
+  'Other'
+];
+
 export const GLAND_PACKING_MATERIALS = [
   'Standard PTFE / Graphited Cotton',
   'Pure Flexible Graphite',
   'Non-Asbestos PTFE Yarn',
-  'Braided Carbon Yarn'
+  'Braided Carbon Yarn',
+  'As Per Standard'
 ];
 
-export const PIPE_SIZES = ['350', '300', '250', '200', '150', '125', '100', '80', '65', '50', '40', '32', '25'];
+export const GLAND_LANTERN_RING_OPTIONS = [
+  'SS304',
+  'Bronze',
+  'Cast Iron',
+  'As Per Standard'
+];
 
 export function generateWadiDescription(cf = {}, fallbackModel = '') {
   const parts = [];
-  const pumpType = cf.pump_type || 'Horizontal Split Casing';
+  const pumpType = cf.pump_type && cf.pump_type !== 'As Per Standard' ? cf.pump_type : 'Horizontal Split Casing';
   const model = cf.pump_model || fallbackModel || '';
   const head = cf.head_m || '';
   const flowM3 = cf.flow_m3_hr || '';
   const flowLps = cf.flow_lps || '';
-  const casing = cf.casing_moc || 'CI';
-  const impeller = cf.impeller_moc || 'CI';
-  const shaft = cf.shaft_moc || '40C8';
+  const orientation = cf.pump_orientation || '';
+  const casing = cf.casing_moc || '';
+  const impeller = cf.impeller_moc || '';
+  const shaft = cf.shaft_moc || '';
   const motorMake = (cf.motor_make || '').trim();
   const kw = cf.motor_kw || '';
   const hp = cf.motor_hp || '';
@@ -81,6 +137,10 @@ export function generateWadiDescription(cf = {}, fallbackModel = '') {
   }
   parts.push(title);
 
+  if (orientation && orientation !== 'NAN' && orientation !== 'As Per Standard') {
+    parts.push(orientation);
+  }
+
   if (head) parts.push(`Head ${head} m`);
   if (flowM3) {
     parts.push(`Flow ${flowM3} m³/hr${flowLps ? ` (${flowLps} LPS)` : ''}`);
@@ -96,7 +156,7 @@ export function generateWadiDescription(cf = {}, fallbackModel = '') {
 
   if (shaft) parts.push(`${shaft} Shaft`);
 
-  // Motor specs - only include motorMake if explicitly provided by user
+  // Motor specs
   let motorStr = '';
   if (kw && hp) {
     motorStr = `${motorMake ? `${motorMake} ` : ''}${kw} kW (${hp} HP)`;
@@ -110,13 +170,18 @@ export function generateWadiDescription(cf = {}, fallbackModel = '') {
   if (motorStr) parts.push(motorStr);
 
   if (rpm) parts.push(`${rpm} RPM`);
-  if (eff) parts.push(`Eff. ${eff}%`);
+  if (eff) {
+    parts.push(eff.startsWith('IE') ? `${eff} Eff.` : eff === 'As Per Standard' ? 'Eff. As Per Standard' : `Eff. ${eff}%`);
+  }
 
   if (sealing === 'Mechanical Seal') {
-    const sealDetails = [sealType !== 'Single' ? sealType : '', sealMat && sealMat !== 'SiC / SiC' ? sealMat : ''].filter(Boolean).join(' ');
+    const sealDetails = [
+      sealType && sealType !== 'Single' && sealType !== 'As Per Standard' ? sealType : '',
+      sealMat && sealMat !== 'SiC / SiC' && sealMat !== 'As Per Standard' ? sealMat : ''
+    ].filter(Boolean).join(' ');
     parts.push(sealDetails ? `Mechanical Seal (${sealDetails})` : 'Mechanical Seal');
   } else if (sealing === 'Gland Packed') {
-    parts.push(glandMat && glandMat !== 'Standard PTFE / Graphited Cotton' ? `Gland Packed (${glandMat})` : 'Gland Packed');
+    parts.push(glandMat && glandMat !== 'Standard PTFE / Graphited Cotton' && glandMat !== 'As Per Standard' ? `Gland Packed (${glandMat})` : 'Gland Packed');
   }
 
   return parts.filter(Boolean).join(', ') + '.';
@@ -124,10 +189,10 @@ export function generateWadiDescription(cf = {}, fallbackModel = '') {
 
 /**
  * WadiLineItemSpecs Component
- * 1. Pump Details
- * 2. Material of Construction (MOC)
- * 3. Motor Specifications (Open editable input, no forced KPL dropdown)
- * 4. Sealing Arrangement (Interactive tactile buttons for Mechanical Seal vs Gland Packed, fully editable seal & packing details)
+ * 1. Pump Details (Suction / Delivery size removed; Pump Orientation includes 'NAN' & 'As Per Standard')
+ * 2. Material of Construction (MOC) (Installation type removed; Construction & MOC have 'As Per Standard')
+ * 3. Motor Specifications (No automatic kW defaults/typing bugs; Motor Efficiency has IE2/IE3/IE4/As Per Standard; Phase deleted)
+ * 4. Sealing Arrangement (All dropdowns include 'As Per Standard')
  */
 export default function WadiLineItemSpecs({
   item = {},
@@ -140,12 +205,10 @@ export default function WadiLineItemSpecs({
 
   // Field values with clean defaults
   const pumpType = cf.pump_type || 'Horizontal Split Casing';
-  const pumpModel = cf.pump_model ?? (item.model || 'UP 250/38');
-  const headM = cf.head_m ?? (item.head ? String(item.head).replace(/[^0-9.]/g, '') : '45');
-  const flowM3 = cf.flow_m3_hr ?? (item.flow ? String(item.flow).split(/[\s(]/)[0].replace(/[^0-9.]/g, '') : '150');
-  const flowLps = cf.flow_lps ?? (flowM3 ? (Number(flowM3) / 3.6).toFixed(2) : '41.67');
-  const suctionSize = cf.suction_size || '250';
-  const deliverySize = cf.delivery_size || '200';
+  const pumpModel = cf.pump_model ?? (item.model || '');
+  const headM = cf.head_m ?? (item.head ? String(item.head).replace(/[^0-9.]/g, '') : '');
+  const flowM3 = cf.flow_m3_hr ?? (item.flow ? String(item.flow).split(/[\s(]/)[0].replace(/[^0-9.]/g, '') : '');
+  const flowLps = cf.flow_lps ?? (flowM3 ? (Number(flowM3) / 3.6).toFixed(2) : '');
   const pumpOrientation = cf.pump_orientation || 'Horizontal';
 
   const casingMoc = cf.casing_moc || 'CI';
@@ -153,17 +216,15 @@ export default function WadiLineItemSpecs({
   const shaftMoc = cf.shaft_moc || '40C8';
   const wettedParts = cf.wetted_parts || 'As Per Standard';
   const construction = cf.construction || 'Split Casing';
-  const installationType = cf.installation_type || 'Horizontal';
 
-  // Motor: Open text input, no forced default of 'KPL'
+  // Motor: Open text input, no forced default values
   const motorMake = cf.motor_make !== undefined ? cf.motor_make : '';
-  const motorKw = cf.motor_kw || '30.00';
-  const motorHp = cf.motor_hp || (motorKw ? (Number(motorKw) * 1.341).toFixed(2) : '40.00');
-  const motorRpm = cf.motor_rpm || '1450';
-  const motorEff = cf.motor_efficiency || '92.0';
-  const motorPhase = cf.motor_phase || '3 Phase';
-  const motorVoltage = cf.motor_voltage || '415';
-  const motorFreq = cf.motor_frequency || '50';
+  const motorKw = cf.motor_kw !== undefined ? cf.motor_kw : '';
+  const motorHp = cf.motor_hp !== undefined ? cf.motor_hp : '';
+  const motorRpm = cf.motor_rpm !== undefined ? cf.motor_rpm : '1450';
+  const motorEff = cf.motor_efficiency || 'IE2';
+  const motorVoltage = cf.motor_voltage !== undefined ? cf.motor_voltage : '415';
+  const motorFreq = cf.motor_frequency !== undefined ? cf.motor_frequency : '50';
 
   // Sealing Arrangement
   const sealingArrangement = cf.sealing_arrangement || 'Mechanical Seal';
@@ -184,13 +245,14 @@ export default function WadiLineItemSpecs({
     // Keep top-level item attributes in sync
     const topLevelUpdates = {};
     if (key === 'pump_model') topLevelUpdates.model = val;
-    if (key === 'head_m') topLevelUpdates.head = `${val} m`;
-    if (key === 'flow_m3_hr') topLevelUpdates.flow = `${val} m³/hr (${updatedCf.flow_lps || ''} LPS)`;
-    if (key === 'suction_size' || key === 'delivery_size') {
-      topLevelUpdates.size = `${updatedCf.suction_size || suctionSize}x${updatedCf.delivery_size || deliverySize} mm`;
-    }
+    if (key === 'head_m') topLevelUpdates.head = val ? `${val} m` : '';
+    if (key === 'flow_m3_hr') topLevelUpdates.flow = val ? `${val} m³/hr${updatedCf.flow_lps ? ` (${updatedCf.flow_lps} LPS)` : ''}` : '';
     if (key === 'motor_kw' || key === 'motor_hp') {
-      topLevelUpdates.hp = `${updatedCf.motor_kw || motorKw} kW (${updatedCf.motor_hp || motorHp} HP)`;
+      const kwVal = updatedCf.motor_kw || '';
+      const hpVal = updatedCf.motor_hp || '';
+      if (kwVal && hpVal) topLevelUpdates.hp = `${kwVal} kW (${hpVal} HP)`;
+      else if (kwVal) topLevelUpdates.hp = `${kwVal} kW`;
+      else if (hpVal) topLevelUpdates.hp = `${hpVal} HP`;
     }
 
     // Auto-refresh description if user has not heavily customized it or if empty
@@ -228,30 +290,28 @@ export default function WadiLineItemSpecs({
 
   // Flow rate m3/hr -> LPS auto-calc
   const handleFlowM3Change = (val) => {
-    const num = Number(val);
+    const num = parseFloat(val);
     const calculatedLps = (!isNaN(num) && num > 0) ? (num / 3.6).toFixed(2) : '';
     handleCfChange('flow_m3_hr', val, { flow_lps: calculatedLps });
   };
 
   // Flow rate LPS -> m3/hr auto-calc
   const handleFlowLpsChange = (val) => {
-    const num = Number(val);
+    const num = parseFloat(val);
     const calculatedM3 = (!isNaN(num) && num > 0) ? (num * 3.6).toFixed(2) : '';
     handleCfChange('flow_lps', val, { flow_m3_hr: calculatedM3 });
   };
 
-  // Motor kW -> HP auto-calc
+  // Motor kW -> HP auto-calc (kW entered by user; HP auto-updates, but kW is never overwritten)
   const handleMotorKwChange = (val) => {
-    const num = Number(val);
+    const num = parseFloat(val);
     const calculatedHp = (!isNaN(num) && num > 0) ? (num * 1.341).toFixed(2) : '';
-    handleCfChange('motor_kw', val, { motor_hp: calculatedHp });
+    handleCfChange('motor_kw', val, calculatedHp ? { motor_hp: calculatedHp } : {});
   };
 
-  // Motor HP -> kW auto-calc
+  // Motor HP change - does NOT touch or overwrite kW
   const handleMotorHpChange = (val) => {
-    const num = Number(val);
-    const calculatedKw = (!isNaN(num) && num > 0) ? (num / 1.341).toFixed(2) : '';
-    handleCfChange('motor_hp', val, { motor_kw: calculatedKw });
+    handleCfChange('motor_hp', val);
   };
 
   return (
@@ -268,14 +328,14 @@ export default function WadiLineItemSpecs({
           <span className="text-[10px] text-sky-700 font-medium">Split Casing / End Suction Specs</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
           {/* Pump Type */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
               Pump Type <span className="text-rose-500">*</span>
             </label>
             <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 cursor-pointer"
               value={pumpType}
               onChange={(e) => handleCfChange('pump_type', e.target.value)}
             >
@@ -305,10 +365,9 @@ export default function WadiLineItemSpecs({
               Head (M) <span className="text-rose-500">*</span>
             </label>
             <input
-              type="number"
-              step="any"
+              type="text"
               className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              placeholder="45"
+              placeholder="e.g. 45"
               value={headM}
               onChange={(e) => handleCfChange('head_m', e.target.value)}
             />
@@ -320,10 +379,9 @@ export default function WadiLineItemSpecs({
               Flow (m³/hr) <span className="text-rose-500">*</span>
             </label>
             <input
-              type="number"
-              step="any"
+              type="text"
               className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              placeholder="150"
+              placeholder="e.g. 150"
               value={flowM3}
               onChange={(e) => handleFlowM3Change(e.target.value)}
             />
@@ -336,8 +394,7 @@ export default function WadiLineItemSpecs({
               <span className="text-sky-600 cursor-help" title="Auto calculated from m³/hr ÷ 3.6">ⓘ</span>
             </label>
             <input
-              type="number"
-              step="any"
+              type="text"
               className="w-full rounded border border-sky-300 bg-sky-50/60 px-2 py-1.5 text-xs font-bold text-sky-900 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
               placeholder="41.67"
               value={flowLps}
@@ -346,56 +403,25 @@ export default function WadiLineItemSpecs({
             />
           </div>
 
-          {/* Suction Size (mm) */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-              Suction Size (mm)
-            </label>
-            <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              value={suctionSize}
-              onChange={(e) => handleCfChange('suction_size', e.target.value)}
-            >
-              {PIPE_SIZES.map((sz) => (
-                <option key={sz} value={sz}>{sz}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Delivery Size (mm) */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-              Delivery Size (mm)
-            </label>
-            <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              value={deliverySize}
-              onChange={(e) => handleCfChange('delivery_size', e.target.value)}
-            >
-              {PIPE_SIZES.map((sz) => (
-                <option key={sz} value={sz}>{sz}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Pump Orientation */}
+          {/* Pump Orientation (Includes 'NAN' & 'As Per Standard'; replaces installation type) */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
               Pump Orientation
             </label>
             <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 cursor-pointer"
               value={pumpOrientation}
               onChange={(e) => handleCfChange('pump_orientation', e.target.value)}
             >
-              <option value="Horizontal">Horizontal</option>
-              <option value="Vertical">Vertical</option>
+              {PUMP_ORIENTATION_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </div>
         </div>
       </div>
 
-      {/* 2. Material of Construction (MOC) */}
+      {/* 2. Material of Construction (MOC) - Installation Type removed */}
       <div className="rounded-xl border border-emerald-200/90 bg-emerald-50/50 p-2.5 space-y-2 transition-all">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
@@ -407,14 +433,14 @@ export default function WadiLineItemSpecs({
           <span className="text-[10px] text-emerald-700 font-medium">Standard Metallurgy</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
           {/* Casing MOC */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
               Casing (MOC) <span className="text-rose-500">*</span>
             </label>
             <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               value={casingMoc}
               onChange={(e) => handleCfChange('casing_moc', e.target.value)}
             >
@@ -430,7 +456,7 @@ export default function WadiLineItemSpecs({
               Impeller (MOC) <span className="text-rose-500">*</span>
             </label>
             <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               value={impellerMoc}
               onChange={(e) => handleCfChange('impeller_moc', e.target.value)}
             >
@@ -446,7 +472,7 @@ export default function WadiLineItemSpecs({
               Shaft (MOC) <span className="text-rose-500">*</span>
             </label>
             <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               value={shaftMoc}
               onChange={(e) => handleCfChange('shaft_moc', e.target.value)}
             >
@@ -476,36 +502,19 @@ export default function WadiLineItemSpecs({
               Construction
             </label>
             <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               value={construction}
               onChange={(e) => handleCfChange('construction', e.target.value)}
             >
-              <option value="Split Casing">Split Casing</option>
-              <option value="End Suction">End Suction</option>
-              <option value="Monobloc">Monobloc</option>
-              <option value="Multistage">Multistage</option>
-            </select>
-          </div>
-
-          {/* Installation Type */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-              Installation Type
-            </label>
-            <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              value={installationType}
-              onChange={(e) => handleCfChange('installation_type', e.target.value)}
-            >
-              <option value="Horizontal">Horizontal</option>
-              <option value="Vertical">Vertical</option>
-              <option value="Submerged">Submerged</option>
+              {CONSTRUCTION_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </div>
         </div>
       </div>
 
-      {/* 3. Motor Specifications - Motor make is now an editable open text input, no forced KPL dropdown */}
+      {/* 3. Motor Specifications - Phase removed, Motor Efficiency has IE2/IE3/IE4/As Per Standard, kW has no typing mistakes */}
       <div className="rounded-xl border border-indigo-200/90 bg-indigo-50/50 p-2.5 space-y-2 transition-all">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
@@ -514,11 +523,11 @@ export default function WadiLineItemSpecs({
             </span>
             <span>Motor Specifications</span>
           </div>
-          <span className="text-[10px] text-indigo-700 font-medium">Electric Drive & Ratings</span>
+          <span className="text-[10px] text-indigo-700 font-medium">Electric Drive &amp; Ratings</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2">
-          {/* Motor Make / Brand - Open editable text input, no forced KPL dropdown */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+          {/* Motor Make / Brand */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
               Motor Make / Brand
@@ -526,38 +535,38 @@ export default function WadiLineItemSpecs({
             <input
               type="text"
               className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              placeholder="e.g. KBL, ABB, Siemens, etc."
+              placeholder="e.g. KBL, ABB, Siemens"
               value={motorMake}
               onChange={(e) => handleCfChange('motor_make', e.target.value)}
             />
           </div>
 
-          {/* Motor Rating kW */}
+          {/* Motor Rating kW - purely user entered, no forced automatic default or cursor glitch */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-              Motor Rating (kW) <span className="text-rose-500">*</span>
+              Motor Rating (kW)
             </label>
             <input
-              type="number"
-              step="any"
+              type="text"
+              inputMode="decimal"
               className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              placeholder="30.00"
+              placeholder="e.g. 30"
               value={motorKw}
               onChange={(e) => handleMotorKwChange(e.target.value)}
             />
           </div>
 
-          {/* Motor Rating HP */}
+          {/* Motor Rating HP - Calculated or editable, does NOT overwrite kW */}
           <div>
             <label className="flex items-center gap-1 text-[10px] font-bold text-slate-700 uppercase mb-0.5">
               <span>Motor Rating (HP)</span>
               <span className="text-indigo-600 cursor-help" title="Auto calculated from kW × 1.341">ⓘ</span>
             </label>
             <input
-              type="number"
-              step="any"
+              type="text"
+              inputMode="decimal"
               className="w-full rounded border border-indigo-300 bg-indigo-50/60 px-2 py-1.5 text-xs font-bold text-indigo-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              placeholder="40.00"
+              placeholder="e.g. 40"
               value={motorHp}
               onChange={(e) => handleMotorHpChange(e.target.value)}
             />
@@ -566,44 +575,30 @@ export default function WadiLineItemSpecs({
           {/* Motor RPM */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-              Motor RPM <span className="text-rose-500">*</span>
+              Motor RPM
             </label>
             <input
-              type="number"
+              type="text"
               className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              placeholder="1450"
+              placeholder="e.g. 1450"
               value={motorRpm}
               onChange={(e) => handleCfChange('motor_rpm', e.target.value)}
             />
           </div>
 
-          {/* Motor Efficiency */}
+          {/* Motor Efficiency - Dropdown with IE2, IE3, IE4, As Per Standard */}
           <div>
             <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-              Motor Efficiency (%) <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="number"
-              step="any"
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              placeholder="92.0"
-              value={motorEff}
-              onChange={(e) => handleCfChange('motor_efficiency', e.target.value)}
-            />
-          </div>
-
-          {/* Phase */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-700 uppercase mb-0.5">
-              Phase
+              Motor Efficiency
             </label>
             <select
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              value={motorPhase}
-              onChange={(e) => handleCfChange('motor_phase', e.target.value)}
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              value={motorEff}
+              onChange={(e) => handleCfChange('motor_efficiency', e.target.value)}
             >
-              <option value="3 Phase">3 Phase</option>
-              <option value="1 Phase">1 Phase</option>
+              {MOTOR_EFFICIENCY_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </div>
 
@@ -613,7 +608,7 @@ export default function WadiLineItemSpecs({
               Voltage (V)
             </label>
             <input
-              type="number"
+              type="text"
               className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               placeholder="415"
               value={motorVoltage}
@@ -627,7 +622,7 @@ export default function WadiLineItemSpecs({
               Frequency (Hz)
             </label>
             <input
-              type="number"
+              type="text"
               className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               placeholder="50"
               value={motorFreq}
@@ -637,7 +632,7 @@ export default function WadiLineItemSpecs({
         </div>
       </div>
 
-      {/* 4. Sealing Arrangement - Highly tactile, 100% clickable segmented buttons & full details */}
+      {/* 4. Sealing Arrangement - All dropdowns include 'As Per Standard' */}
       <div className="rounded-xl border border-purple-200/90 bg-purple-50/50 p-2.5 space-y-2 transition-all">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-bold text-purple-950">
@@ -650,7 +645,7 @@ export default function WadiLineItemSpecs({
         </div>
 
         <div className="flex flex-col md:flex-row md:items-center gap-3">
-          {/* Tactile Toggle Buttons - 100% clickable anywhere on the card */}
+          {/* Tactile Toggle Buttons */}
           <div className="flex items-center gap-2 bg-white/90 border border-purple-200 rounded-xl p-1.5 shrink-0 shadow-xs">
             <button
               type="button"
@@ -778,10 +773,9 @@ export default function WadiLineItemSpecs({
                     value={glandLanternRing}
                     onChange={(e) => handleCfChange('gland_lantern_ring', e.target.value)}
                   >
-                    <option value="SS304">SS304</option>
-                    <option value="Bronze">Bronze</option>
-                    <option value="Cast Iron">Cast Iron</option>
-                    <option value="As Per Standard">As Per Standard</option>
+                    {GLAND_LANTERN_RING_OPTIONS.map((lr) => (
+                      <option key={lr} value={lr}>{lr}</option>
+                    ))}
                   </select>
                 </div>
               </div>
