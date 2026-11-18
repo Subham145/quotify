@@ -1,3 +1,5 @@
+import { BANK_DETAILS, getBankDetailsBoxHtml } from './bankDetails.js';
+
 export function choithramTemplate(data) {
   const items = (data.items || [])
     .map(
@@ -133,6 +135,7 @@ ${items}
 <ol>
 ${termsList}
 </ol>
+${getBankDetailsBoxHtml('margin-top: 6px;')}
 </div>
 
 <div class="footer">

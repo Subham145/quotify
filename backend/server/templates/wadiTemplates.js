@@ -5,6 +5,8 @@
 // 3. wadi_end_suction: End Suction Pump Set (Single Page / Flow in m3/h)
 // 4. wadi_fire_fighting_moc: Fire Fighting Pump Set (With MOC & Note)
 
+import { BANK_DETAILS, getBankDetailsBoxHtml } from './bankDetails.js';
+
 function formatIndianNumber(val) {
   if (val === undefined || val === null || val === '') return '';
   const num = Number(val);
@@ -389,6 +391,7 @@ export function wadiSplitCaseTemplate(data) {
         <div class="term-item"><span class="term-name">Warranty:</span> ${data.warranty_terms || '12 months from the date of commissioning whichever is earlier as a special case related to any manufacturing or quality issues under standard operation as per the warranty clause.'}</div>
         <div class="term-item"><span class="term-name">Test Certificates:</span> We will submit test certificates for duty points only along with dispatch documents.</div>
         <div class="term-item"><span class="term-name">Validity of offer:</span> ${data.validity_terms || 'Our will be valid for 15 days only.'}</div>
+        ${getBankDetailsBoxHtml('margin-top: 6px;')}
       </div>
     </div>
 
@@ -569,6 +572,7 @@ export function wadiFireFightingTemplate(data) {
         <div class="term-item"><span class="term-name">Test Certificates:</span> We will submit test certificates for duty points only along with dispatch documents.</div>
         <div class="term-item"><span class="term-name">Installation &amp; Commissioning of Pump Set:</span> ${data.installation_terms || 'Installation of the pump set will be in your Scope and super vision of commissioning will be done by us free of charge for 1 day only.'}</div>
         <div class="term-item"><span class="term-name">Validity of offer:</span> ${data.validity_terms || 'Our will be valid for 30 days only.'}</div>
+        ${getBankDetailsBoxHtml('margin-top: 8px;')}
       </div>
 
       <div class="sign-off" style="margin-top: 40px;">
@@ -711,6 +715,7 @@ export function wadiEndSuctionTemplate(data) {
         <div class="term-item"><span class="term-name">4. This offer is valid till</span> ${data.validity_terms || '18-Oct-2026.'}</div>
         <div class="term-item"><span class="term-name">5. Delivery–</span> ${data.delivery_terms || 'Ex Our Godown, Dewas Naka Indore.'}</div>
         <div class="term-item"><span class="term-name">6. Freight –</span> ${data.freight_terms || 'To Pay.'}</div>
+        ${getBankDetailsBoxHtml('margin-top: 6px; font-size: 9.5px;')}
       </div>
 
       <!-- SIGN-OFF -->
@@ -890,6 +895,7 @@ export function wadiFireFightingMocTemplate(data) {
         <div class="term-item"><span class="term-name">Test Certificates:</span> We will submit test certificates for duty points only along with dispatch documents.</div>
         <div class="term-item"><span class="term-name">Installation &amp; Commissioning of Pump Set:</span> ${data.installation_terms || 'Installation of the pump set will be in your Scope and super vision of commissioning will be done by us free of charge for 1 day only.'}</div>
         <div class="term-item"><span class="term-name">Validity of offer:</span> ${data.validity_terms || 'Our will be valid for 30 days only.'}</div>
+        ${getBankDetailsBoxHtml('margin-top: 8px;')}
       </div>
 
       <div class="sign-off" style="margin-top: 40px;">
