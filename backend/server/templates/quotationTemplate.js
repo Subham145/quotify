@@ -1,3 +1,5 @@
+import { BANK_DETAILS, getBankDetailsBoxHtml } from './bankDetails.js';
+
 export function quotationTemplate(data){
 
 const items=(data.items||[])
@@ -252,6 +254,8 @@ Freight – ${data.freight_terms || 'To Pay'}
 </li>
 
 </ol>
+
+${getBankDetailsBoxHtml('margin-top: 15px;')}
 
 <br><br>
 

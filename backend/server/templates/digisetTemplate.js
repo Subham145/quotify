@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { BANK_DETAILS, getBankTableHtml } from './bankDetails.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -613,27 +614,27 @@ export function digisetTemplate(data) {
       <table class="bank-table">
         <tr>
           <td class="label-col">BANK NAME</td>
-          <td>ICICI BANK</td>
+          <td>${BANK_DETAILS.bankName}</td>
         </tr>
         <tr>
-          <td class="label-col">COMPANY NAME</td>
-          <td>PAREEK POWER AND PUMPS P. LTD.</td>
+          <td class="label-col">ACCOUNT HOLDER</td>
+          <td>${BANK_DETAILS.accountHolder}</td>
         </tr>
         <tr>
           <td class="label-col">A/C NO.</td>
-          <td>725005500236</td>
-        </tr>
-        <tr>
-          <td class="label-col">BANK ADD.</td>
-          <td>INDORE (MADHYA PRADESH)</td>
+          <td>${BANK_DETAILS.accountNumber}</td>
         </tr>
         <tr>
           <td class="label-col">IFSC CODE</td>
-          <td>ICIC0007250</td>
+          <td>${BANK_DETAILS.ifscCode}</td>
+        </tr>
+        <tr>
+          <td class="label-col">BRANCH / BANK ADD.</td>
+          <td>${BANK_DETAILS.branch}</td>
         </tr>
         <tr>
           <td class="label-col">GSTIN NO.</td>
-          <td>23AACCP0309E1Z5</td>
+          <td>${BANK_DETAILS.gstin}</td>
         </tr>
       </table>
 

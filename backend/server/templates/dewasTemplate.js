@@ -1,3 +1,5 @@
+import { BANK_DETAILS, getBankDetailsBoxHtml } from './bankDetails.js';
+
 export function dewasTemplate(data) {
   const formatCurrency = (val) => {
     if (val === undefined || val === null || val === '') return '';
@@ -435,6 +437,7 @@ export function dewasTemplate(data) {
       <div class="terms-section">
         <div class="terms-title">Terms &amp;Condition:-</div>
         ${termsHtml}
+        ${getBankDetailsBoxHtml('margin-top: 5px; font-size: 9.5px;')}
       </div>
 
       <!-- SIGNATURE / CLOSING -->
